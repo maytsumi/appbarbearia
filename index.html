@@ -1,0 +1,2512 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BarberBook — Agendamento</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=Playfair+Display:ital@1&display=swap" rel="stylesheet">
+
+<!-- ══════════════════════════════════════════════════════════════════
+     🔥 FIREBASE — Substitua os valores abaixo pelas suas credenciais
+     Firebase Console → Seu Projeto → Configurações → Seus apps → CDN
+     ══════════════════════════════════════════════════════════════════ -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import {
+    getFirestore, collection, addDoc, onSnapshot,
+    doc, updateDoc, setDoc, deleteDoc, query, orderBy, serverTimestamp,
+    where, getDocs
+  } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import {
+    getMessaging, getToken, onMessage
+  } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
+
+  // ─── 🔑 SUAS CREDENCIAIS AQUI ────────────────────────────────────────
+const firebaseConfig = {
+cod firebase aqui
+};
+
+  // ✏️ VAPID KEY — Firebase Console → Cloud Messaging → Web Push certificates → Key pair
+  const VAPID_KEY = "key firebase aqui";
+  // ─────────────────────────────────────────────────────────────────────
+
+  const app       = initializeApp(firebaseConfig);
+  const db        = getFirestore(app);
+  const messaging = getMessaging(app);
+
+  window._fb = { db, collection, addDoc, onSnapshot, doc, updateDoc, setDoc,
+                 query, orderBy, serverTimestamp, where, getDocs,
+                 messaging, getToken, onMessage, VAPID_KEY };
+  window.dispatchEvent(new Event('firebase-ready'));
+</script>
+
+<style>
+:root {
+  --bg: #0d0d0d; --surface: #161616; --card: #1e1e1e; --border: #2a2a2a;
+  --gold: #c9a84c; --gold-light: #e8c870; --gold-dim: rgba(201,168,76,0.12);
+  --text: #f0ece4; --muted: #888; --danger: #e05252; --success: #4caf88; --radius: 12px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; }
+body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; min-height: 100vh; overflow-x: hidden; }
+body::before { content:''; position:fixed; inset:0; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E"); pointer-events:none; z-index:9999; opacity:0.4; }
+
+/* ─── Header ─── */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: rgba(13,13,13,0.95);
+  backdrop-filter: blur(12px);
+  z-index: 100;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.logo { display:flex; align-items:baseline; gap:6px; flex-shrink:0; }
+.logo-main { font-family:'Bebas Neue',sans-serif; font-size:24px; letter-spacing:3px; color:var(--text); }
+.logo-accent { font-family:'Playfair Display',serif; font-style:italic; font-size:13px; color:var(--gold); letter-spacing:2px; }
+
+.header-right { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+
+/* Nav tabs — scrollable on mobile */
+.nav-tabs {
+  display: flex;
+  gap: 3px;
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  max-width: 100%;
+}
+.nav-tabs::-webkit-scrollbar { display: none; }
+
+.nav-tab {
+  padding: 7px 12px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.nav-tab.active { background: var(--gold); color: #000; font-weight: 600; }
+.nav-tab:hover:not(.active) { color: var(--text); background: var(--border); }
+
+/* User pill */
+.user-pill { display:flex; align-items:center; gap:6px; background:var(--card); border:1px solid var(--border); border-radius:20px; padding:4px 10px 4px 5px; font-size:12px; font-weight:500; flex-shrink:0; }
+.user-pill-avatar { width:24px; height:24px; border-radius:50%; background:var(--gold-dim); border:1px solid var(--gold); display:flex; align-items:center; justify-content:center; font-size:10px; color:var(--gold); font-weight:700; flex-shrink:0; }
+.user-pill-name { max-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.user-pill-logout { background:none; border:none; color:var(--muted); cursor:pointer; font-size:14px; padding:0 0 0 3px; transition:color 0.2s; line-height:1; }
+.user-pill-logout:hover { color:var(--danger); }
+
+/* ─── Views ─── */
+.view { display:none; padding: 20px 16px; max-width:960px; margin:0 auto; }
+.view.active { display:block; animation:fadeUp 0.3s ease; }
+@keyframes fadeUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+
+.section-title { font-family:'Bebas Neue',sans-serif; font-size:28px; letter-spacing:2px; margin-bottom:4px; line-height:1.1; }
+.section-sub { color:var(--muted); font-size:13px; margin-bottom:20px; }
+.gold-line { width:40px; height:2px; background:var(--gold); margin:6px 0 20px; }
+
+/* ─── Steps — compact on mobile ─── */
+.steps {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+.step {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 500;
+  min-width: 0;
+  flex-shrink: 1;
+}
+.step-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.step-num { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+.step.done .step-num { background:var(--gold); border-color:var(--gold); color:#000; }
+.step.active .step-num { border-color:var(--gold); color:var(--gold); }
+.step.active { color:var(--text); }
+.step-sep { flex:1; height:1px; background:var(--border); min-width:6px; }
+
+/* ─── Auth ─── */
+.auth-card { max-width:400px; margin:24px auto; background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:24px 20px; }
+.auth-tabs { display:flex; margin-bottom:20px; border-radius:8px; overflow:hidden; border:1px solid var(--border); }
+.auth-tab { flex:1; padding:10px; border:none; background:transparent; color:var(--muted); font-family:'DM Sans',sans-serif; font-size:13px; font-weight:600; cursor:pointer; transition:all 0.2s; }
+.auth-tab.active { background:var(--gold); color:#000; }
+.auth-tab:hover:not(.active) { background:var(--border); color:var(--text); }
+.hint-text { font-size:12px; color:var(--muted); text-align:center; margin-top:14px; line-height:1.6; }
+.hint-text a { color:var(--gold); cursor:pointer; text-decoration:underline; }
+
+/* ─── My appointments ─── */
+.my-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:10px; }
+.my-appt-card { background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; display:flex; align-items:flex-start; gap:12px; margin-bottom:10px; transition:border-color 0.2s; flex-wrap:wrap; }
+.upcoming-badge { font-size:9px; font-weight:700; padding:2px 7px; border-radius:20px; background:var(--gold-dim); color:var(--gold); border:1px solid rgba(201,168,76,0.3); text-transform:uppercase; letter-spacing:0.5px; }
+
+/* ─── Barbers ─── */
+.barbers-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; margin-bottom:24px; }
+.barber-card { background:var(--card); border:2px solid var(--border); border-radius:var(--radius); padding:18px 14px; cursor:pointer; transition:all 0.2s; text-align:center; position:relative; overflow:hidden; }
+.barber-card::after { content:''; position:absolute; inset:0; background:var(--gold-dim); opacity:0; transition:opacity 0.2s; }
+.barber-card:hover::after,.barber-card.selected::after { opacity:1; }
+.barber-card.selected { border-color:var(--gold); }
+.barber-avatar { width:60px; height:60px; border-radius:50%; margin:0 auto 10px; display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:700; font-family:'Bebas Neue',sans-serif; border:2px solid var(--border); }
+.barber-name { font-weight:600; font-size:14px; margin-bottom:3px; }
+.barber-specialty { font-size:11px; color:var(--gold); font-weight:500; }
+.barber-rating { font-size:11px; color:var(--muted); margin-top:4px; }
+
+/* ─── Calendar ─── */
+.calendar-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.cal-month { font-family:'Bebas Neue',sans-serif; font-size:20px; letter-spacing:2px; }
+.cal-nav { background:var(--card); border:1px solid var(--border); border-radius:8px; color:var(--text); width:36px; height:36px; cursor:pointer; font-size:18px; display:flex; align-items:center; justify-content:center; transition:all 0.2s; }
+.cal-nav:hover { border-color:var(--gold); color:var(--gold); }
+.calendar-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-bottom:20px; }
+.cal-day-label { text-align:center; font-size:10px; font-weight:600; letter-spacing:0.5px; color:var(--muted); text-transform:uppercase; padding:5px 0; }
+.cal-day { aspect-ratio:1; display:flex; align-items:center; justify-content:center; border-radius:6px; font-size:13px; font-weight:500; cursor:pointer; transition:all 0.15s; border:1px solid transparent; position:relative; }
+.cal-day:hover:not(.empty):not(.past) { background:var(--card); border-color:var(--gold); color:var(--gold); }
+.cal-day.selected { background:var(--gold); color:#000; font-weight:700; }
+.cal-day.today { border-color:var(--gold); color:var(--gold); }
+.cal-day.past { color:#333; cursor:not-allowed; }
+.cal-day.empty { cursor:default; }
+.cal-day.has-slots::after { content:''; position:absolute; bottom:2px; left:50%; transform:translateX(-50%); width:3px; height:3px; border-radius:50%; background:var(--gold); }
+.cal-day.selected::after { background:#000; }
+
+/* ─── Slots ─── */
+.slots-title { font-size:12px; font-weight:600; letter-spacing:1px; text-transform:uppercase; color:var(--muted); margin-bottom:10px; }
+.slots-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(76px,1fr)); gap:7px; margin-bottom:20px; }
+.slot { padding:9px 6px; border-radius:8px; border:1px solid var(--border); background:var(--card); color:var(--text); font-size:13px; font-weight:500; text-align:center; cursor:pointer; transition:all 0.15s; }
+.slot:hover:not(.taken) { border-color:var(--gold); color:var(--gold); }
+.slot.selected { background:var(--gold); border-color:var(--gold); color:#000; font-weight:700; }
+.slot.taken { background:rgba(224,82,82,0.08); border-color:rgba(224,82,82,0.2); color:#444; cursor:not-allowed; text-decoration:line-through; }
+
+/* ─── Form ─── */
+.form-card { background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:18px 16px; margin-bottom:16px; }
+.form-row { display:grid; grid-template-columns:1fr; gap:14px; margin-bottom:14px; }
+.form-group { display:flex; flex-direction:column; gap:5px; }
+.form-group.full { grid-column:1/-1; }
+label { font-size:11px; font-weight:600; letter-spacing:0.8px; text-transform:uppercase; color:var(--muted); }
+input,select,textarea { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:12px 14px; color:var(--text); font-family:'DM Sans',sans-serif; font-size:16px; transition:border-color 0.2s; outline:none; width:100%; -webkit-appearance:none; }
+input:focus,select:focus,textarea:focus { border-color:var(--gold); }
+select option { background:var(--surface); }
+
+/* ─── Buttons ─── */
+.btn { padding:13px 20px; border-radius:8px; border:none; font-family:'DM Sans',sans-serif; font-weight:600; font-size:14px; cursor:pointer; letter-spacing:0.4px; transition:all 0.2s; touch-action:manipulation; }
+.btn-gold { background:var(--gold); color:#000; }
+.btn-gold:hover { background:var(--gold-light); }
+.btn-gold:active { transform:scale(0.98); }
+.btn-gold:disabled { opacity:0.5; cursor:not-allowed; }
+.btn-outline { background:transparent; border:1px solid var(--border); color:var(--text); }
+.btn-outline:hover { border-color:var(--gold); color:var(--gold); }
+.btn-danger { background:rgba(224,82,82,0.15); color:var(--danger); border:1px solid rgba(224,82,82,0.3); }
+.btn-danger:hover { background:rgba(224,82,82,0.25); }
+.btn-sm { padding:7px 14px; font-size:12px; }
+.btn-full { width:100%; }
+
+/* ─── Summary ─── */
+.summary-card { background:var(--gold-dim); border:1px solid rgba(201,168,76,0.25); border-radius:var(--radius); padding:16px; margin-bottom:16px; display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.summary-item { display:flex; flex-direction:column; gap:2px; }
+.summary-label { font-size:10px; text-transform:uppercase; letter-spacing:1px; color:var(--gold); font-weight:600; }
+.summary-value { font-size:14px; font-weight:600; }
+
+/* ─── Confirm actions ─── */
+.confirm-actions { display:flex; gap:10px; flex-wrap:wrap; }
+.confirm-actions .btn { flex:1; min-width:120px; text-align:center; }
+
+/* ─── Admin login ─── */
+.admin-login { max-width:380px; margin:40px auto; background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:28px 20px; }
+.admin-header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:10px; }
+.admin-filters { display:flex; gap:6px; flex-wrap:wrap; }
+.filter-btn { padding:5px 12px; border-radius:20px; border:1px solid var(--border); background:transparent; color:var(--muted); font-size:11px; font-weight:500; cursor:pointer; transition:all 0.15s; white-space:nowrap; }
+.filter-btn.active { background:var(--gold); color:#000; border-color:var(--gold); font-weight:700; }
+.filter-btn:hover:not(.active) { border-color:var(--gold); color:var(--gold); }
+.filter-select { padding:5px 12px; border-radius:20px; border:1px solid var(--border); background:var(--card); color:var(--muted); font-size:11px; font-weight:500; cursor:pointer; transition:all 0.15s; white-space:nowrap; }
+.filter-select:focus { outline:none; border-color:var(--gold); color:var(--gold); }
+
+/* ─── Appointment cards ─── */
+.appointments-list { display:flex; flex-direction:column; gap:10px; }
+.appt-card { background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; display:flex; align-items:flex-start; gap:12px; transition:border-color 0.2s; flex-wrap:wrap; }
+.appt-card:hover { border-color:#333; }
+.appt-time { background:var(--gold-dim); border:1px solid rgba(201,168,76,0.2); border-radius:8px; padding:8px 12px; text-align:center; min-width:64px; flex-shrink:0; }
+.appt-time-main { font-family:'Bebas Neue',sans-serif; font-size:20px; letter-spacing:1px; color:var(--gold); line-height:1; }
+.appt-time-date { font-size:10px; color:var(--muted); margin-top:2px; text-transform:uppercase; }
+.appt-info { flex:1; min-width:0; }
+.appt-name { font-weight:600; font-size:14px; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.appt-details { font-size:12px; color:var(--muted); word-break:break-all; }
+.appt-service { font-size:11px; font-weight:600; padding:2px 8px; border-radius:20px; background:var(--surface); border:1px solid var(--border); color:var(--text); margin-top:5px; display:inline-block; }
+.appt-status { display:flex; flex-direction:column; align-items:flex-end; gap:6px; flex-shrink:0; }
+.status-badge { font-size:10px; font-weight:700; padding:3px 8px; border-radius:20px; letter-spacing:0.5px; text-transform:uppercase; white-space:nowrap; }
+.status-confirmed { background:rgba(76,175,136,0.15); color:var(--success); border:1px solid rgba(76,175,136,0.3); }
+.status-pending { background:rgba(201,168,76,0.15); color:var(--gold); border:1px solid rgba(201,168,76,0.3); }
+.status-cancelled { background:rgba(224,82,82,0.1); color:var(--danger); border:1px solid rgba(224,82,82,0.2); }
+
+/* ─── Stats ─── */
+.stats-row { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:20px; }
+.stat-card { background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:16px; }
+.stat-number { font-family:'Bebas Neue',sans-serif; font-size:36px; letter-spacing:2px; color:var(--gold); line-height:1; }
+.stat-label { font-size:11px; color:var(--muted); margin-top:3px; font-weight:500; }
+
+/* ─── Toast ─── */
+.toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--card); border:1px solid var(--gold); border-radius:10px; padding:12px 18px; font-size:13px; font-weight:500; color:var(--text); z-index:9998; animation:slideIn 0.3s ease,fadeOut 0.4s ease 2.8s forwards; max-width:calc(100vw - 32px); text-align:center; white-space:nowrap; }
+@keyframes slideIn { from{opacity:0;transform:translateX(-50%) translateY(20px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
+@keyframes fadeOut { to{opacity:0;transform:translateX(-50%) translateY(10px)} }
+
+/* ─── Misc ─── */
+.empty-state { text-align:center; padding:40px 16px; color:var(--muted); }
+.empty-icon { font-size:40px; margin-bottom:10px; }
+.empty-text { font-size:14px; }
+.search-box { position:relative; margin-bottom:14px; }
+.search-box input { width:100%; padding-left:40px; }
+.search-icon { position:absolute; left:14px; top:50%; transform:translateY(-50%); color:var(--muted); font-size:16px; pointer-events:none; }
+.barber-tag { display:inline-flex; align-items:center; gap:4px; font-size:11px; padding:2px 8px; border-radius:20px; background:var(--surface); border:1px solid var(--border); color:var(--muted); }
+.admin-divider { height:1px; background:var(--border); margin:24px 0; }
+
+/* ─── Notification banner ─── */
+.notif-banner {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  background: linear-gradient(135deg, rgba(201,168,76,0.15), rgba(201,168,76,0.05));
+  border: 1px solid rgba(201,168,76,0.35);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.notif-banner.show { display: flex; animation: fadeUp 0.4s ease; }
+.notif-banner-icon { font-size: 24px; flex-shrink: 0; }
+.notif-banner-text { flex: 1; min-width: 0; }
+.notif-banner-text strong { display: block; font-size: 14px; margin-bottom: 2px; }
+.notif-banner-text span { font-size: 12px; color: var(--muted); }
+.notif-banner-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+/* ─── Pagamentos ─── */
+.payment-method-selector { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; }
+.payment-method-btn { padding: 10px 16px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; }
+.payment-method-btn.active { background: var(--gold); color: #000; border-color: var(--gold); }
+.payment-method-btn:hover:not(.active) { border-color: var(--gold); color: var(--gold); }
+.payment-form { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+.payment-form input { width: 100%; margin-bottom: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); font-size: 14px; }
+.payment-form input:focus { outline: none; border-color: var(--gold); }
+.payment-form input::placeholder { color: var(--muted); }
+
+.account-profile-card { display: grid; grid-template-columns: minmax(240px,1fr) minmax(240px,1fr); gap: 16px; margin-bottom: 22px; }
+.profile-edit { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; }
+.profile-stats { display: grid; grid-template-columns: repeat(2,minmax(120px,1fr)); gap: 12px; }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px; }
+.stat-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.stat-value { font-size: 20px; font-weight: 700; color: var(--text); }
+.profile-edit .form-group { margin-bottom: 12px; }
+.profile-edit .form-group label { display: block; margin-bottom: 6px; font-size: 12px; color: var(--muted); }
+.profile-edit .form-group input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+.profile-edit .form-group input:focus { outline: none; border-color: var(--gold); }
+
+.notif-status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.notif-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.notif-dot.active { background: var(--success); box-shadow: 0 0 6px var(--success); }
+.notif-dot.pending { background: var(--gold); }
+.report-section { background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:18px 16px; margin-bottom:20px; }
+.report-header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:10px; }
+.report-title { font-family:'Bebas Neue',sans-serif; font-size:18px; letter-spacing:2px; color:var(--text); }
+.period-selector { display:flex; gap:5px; flex-wrap:wrap; }
+.period-btn { padding:5px 11px; border-radius:20px; border:1px solid var(--border); background:transparent; color:var(--muted); font-size:11px; font-weight:600; cursor:pointer; transition:all 0.15s; font-family:'DM Sans',sans-serif; white-space:nowrap; }
+.period-btn.active { background:var(--gold); color:#000; border-color:var(--gold); }
+.period-btn:hover:not(.active) { border-color:var(--gold); color:var(--gold); }
+.custom-range { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:10px; }
+.custom-range input[type="date"] { padding:8px 12px; font-size:13px; background:var(--surface); border:1px solid var(--border); border-radius:8px; color:var(--text); cursor:pointer; flex:1; min-width:130px; }
+.custom-range input[type="date"]::-webkit-calendar-picker-indicator { filter:invert(0.6); cursor:pointer; }
+.kpi-row { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:20px; }
+.kpi-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px 12px; position:relative; overflow:hidden; }
+.kpi-card::before { content:''; position:absolute; top:0;left:0;right:0; height:2px; background:var(--gold); }
+.kpi-value { font-family:'Bebas Neue',sans-serif; font-size:28px; letter-spacing:1px; color:var(--gold); line-height:1; margin-bottom:3px; }
+.kpi-label { font-size:10px; color:var(--muted); font-weight:600; letter-spacing:0.5px; text-transform:uppercase; }
+.kpi-sub { font-size:10px; color:var(--muted); margin-top:3px; }
+.chart-wrap { width:100%; overflow-x:auto; margin-bottom:20px; -webkit-overflow-scrolling:touch; }
+.chart-svg { display:block; min-width:280px; }
+.breakdown-grid { display:grid; grid-template-columns:1fr; gap:12px; }
+.breakdown-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px; }
+.breakdown-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin-bottom:12px; }
+.breakdown-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.breakdown-bar-wrap { flex:1; background:var(--border); border-radius:4px; height:5px; overflow:hidden; }
+.breakdown-bar { height:100%; background:var(--gold); border-radius:4px; transition:width 0.5s ease; }
+
+/* ─── Sobre (About page) ─── */
+.about-hero { text-align:center; margin-bottom:24px; }
+.about-hero-logo { font-family:'Bebas Neue',sans-serif; font-size:36px; letter-spacing:4px; color:var(--text); margin-bottom:4px; }
+.about-hero-sub { font-family:'Playfair Display',serif; font-style:italic; font-size:16px; color:var(--gold); }
+.about-description { font-size:14px; color:var(--muted); line-height:1.7; text-align:justify; margin-bottom:24px; }
+.info-card { background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:16px; display:flex; align-items:flex-start; gap:14px; margin-bottom:12px; transition:border-color 0.2s; }
+.info-card:hover { border-color:#333; }
+.info-icon { font-size:24px; flex-shrink:0; width:40px; height:40px; display:flex; align-items:center; justify-content:center; background:var(--gold-dim); border-radius:10px; border:1px solid rgba(201,168,76,0.2); }
+.info-content { flex:1; }
+.info-label { font-size:10px; font-weight:600; letter-spacing:0.8px; color:var(--muted); text-transform:uppercase; margin-bottom:4px; }
+.info-value { font-size:14px; font-weight:500; line-height:1.5; }
+.info-value a { color:var(--gold); text-decoration:none; }
+.info-value a:hover { text-decoration:underline; }
+.info-sub { font-size:12px; color:var(--muted); }
+.hours-grid { display:grid; gap:6px; }
+.hours-row { display:flex; justify-content:space-between; padding:8px 12px; border-radius:8px; font-size:14px; }
+.hours-row:nth-child(even) { background:var(--surface); }
+.hours-day { font-weight:500; }
+.hours-time { color:var(--gold); font-weight:600; }
+.hours-row.closed .hours-time { color:var(--danger); }
+.social-links { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
+.social-link { display:flex; align-items:center; justify-content:center; width:44px; height:44px; border-radius:10px; background:var(--card); border:1px solid var(--border); color:var(--muted); text-decoration:none; font-size:18px; transition:all 0.2s; }
+.social-link:hover { border-color:var(--gold); color:var(--gold); transform:translateY(-2px); }
+.social-link svg { width:20px; height:20px; fill:currentColor; }
+.map-wrap { width:100%; border-radius:var(--radius); overflow:hidden; border:1px solid var(--border); }
+.map-wrap iframe { width:100%; height:220px; border:0; filter:grayscale(0.8) invert(1) contrast(1.1); }
+.breakdown-name { font-size:12px; font-weight:500; min-width:80px; max-width:90px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.breakdown-val { font-size:11px; color:var(--gold); font-weight:700; white-space:nowrap; }
+
+/* ─── Gestão de Agenda ─── */
+.agenda-section { background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:18px 16px; margin-bottom:20px; }
+.agenda-section-title { font-family:'Bebas Neue',sans-serif; font-size:18px; letter-spacing:2px; color:var(--text); margin-bottom:14px; display:flex; align-items:center; gap:8px; }
+
+/* Mini calendário admin */
+.agenda-cal-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+.agenda-cal-month { font-family:'Bebas Neue',sans-serif; font-size:17px; letter-spacing:1px; }
+.agenda-cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+.agenda-cal-label { text-align:center; font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase; padding:4px 0; }
+.agenda-day {
+  aspect-ratio:1; display:flex; align-items:center; justify-content:center;
+  border-radius:6px; font-size:13px; font-weight:500; cursor:pointer;
+  border:1px solid transparent; position:relative; transition:all 0.15s; user-select:none;
+}
+.agenda-day:hover:not(.agenda-past):not(.agenda-empty) { border-color:var(--gold); color:var(--gold); }
+.agenda-day.agenda-past { color:#333; cursor:not-allowed; }
+.agenda-day.agenda-empty { cursor:default; }
+.agenda-day.agenda-today { border-color:var(--gold); color:var(--gold); }
+.agenda-day.agenda-blocked {
+  background:rgba(224,82,82,0.12);
+  border-color:rgba(224,82,82,0.3);
+  color:var(--danger);
+  text-decoration:line-through;
+}
+.agenda-day.agenda-selected { background:var(--gold); color:#000; font-weight:700; }
+.agenda-day.agenda-custom-hours::after {
+  content:''; position:absolute; bottom:2px; left:50%; transform:translateX(-50%);
+  width:4px; height:4px; border-radius:50%; background:var(--success);
+}
+
+/* Painel de edição de dia */
+.day-editor {
+  background:var(--surface); border:1px solid var(--border); border-radius:10px;
+  padding:16px; margin-top:14px; animation:fadeUp 0.2s ease;
+}
+.day-editor-title { font-weight:600; font-size:14px; margin-bottom:12px; color:var(--text); }
+.day-editor-actions { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+.day-status-badge { font-size:11px; font-weight:700; padding:4px 10px; border-radius:20px; }
+
+/* Chips de horário */
+.hours-chip-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(72px,1fr)); gap:6px; }
+.hour-chip {
+  padding:7px 4px; border-radius:7px; border:1px solid var(--border);
+  background:var(--card); color:var(--text); font-size:12px; font-weight:500;
+  text-align:center; cursor:pointer; transition:all 0.12s; user-select:none;
+}
+.hour-chip.active { background:var(--gold); border-color:var(--gold); color:#000; font-weight:700; }
+.hour-chip:hover:not(.active) { border-color:var(--gold); color:var(--gold); }
+
+/* Legenda */
+.agenda-legend { display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; }
+.legend-item { display:flex; align-items:center; gap:5px; font-size:11px; color:var(--muted); }
+.legend-dot { width:10px; height:10px; border-radius:3px; flex-shrink:0; }
+
+/* Horários padrão por dia da semana */
+.week-hours-grid { display:flex; flex-direction:column; gap:8px; }
+.week-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.week-day-label { font-size:12px; font-weight:600; color:var(--muted); width:88px; flex-shrink:0; }
+.week-row input[type="time"] { background:var(--surface); border:1px solid var(--border); border-radius:7px; padding:7px 10px; color:var(--text); font-size:13px; width:100px; }
+.week-row input[type="time"]:focus { border-color:var(--gold); outline:none; }
+.week-closed-toggle { display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12px; color:var(--muted); }
+.week-closed-toggle input { width:14px; height:14px; accent-color:var(--gold); cursor:pointer; }
+
+/* ─── Tablet 600px+ ─── */
+@media(min-width:600px){
+  header { padding:16px 28px; }
+  .logo-main { font-size:26px; }
+  .view { padding:28px 24px; }
+  .section-title { font-size:32px; }
+  .form-row { grid-template-columns:1fr 1fr; }
+  .barbers-grid { grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); }
+  .stats-row { grid-template-columns:repeat(4,1fr); }
+  .kpi-row { grid-template-columns:repeat(4,1fr); }
+  .breakdown-grid { grid-template-columns:1fr 1fr; }
+  .summary-card { display:flex; flex-wrap:wrap; }
+  .appt-card { flex-wrap:nowrap; align-items:center; }
+  .my-appt-card { flex-wrap:nowrap; align-items:center; }
+}
+
+/* ─── Desktop 900px+ ─── */
+@media(min-width:900px){
+  header { padding:18px 32px; }
+  .logo-main { font-size:28px; }
+  .view { padding:32px; }
+  .section-title { font-size:36px; letter-spacing:3px; }
+  .barber-avatar { width:72px; height:72px; font-size:28px; }
+  .barber-name { font-size:16px; }
+  .nav-tab { font-size:13px; padding:8px 14px; }
+}
+
+@media(max-width:640px) {
+  .account-profile-card { grid-template-columns: 1fr; }
+  .profile-stats { grid-template-columns: 1fr; }
+  .payment-method-selector { flex-direction: column; }
+  .payment-method-btn { width: 100%; }
+  .my-header { flex-direction: column; align-items: stretch; gap: 12px; }
+  .filter-btn { flex: 1 1 48%; }
+  .filter-btn, .payment-method-btn { font-size: 13px; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo" onclick="navTo('client')" style="cursor:pointer">
+    <span class="logo-main">BarberBook</span>
+    <span class="logo-accent">Studio</span>
+  </div>
+  <div class="header-right">
+    <div id="user-pill" class="user-pill" style="display:none">
+      <div class="user-pill-avatar" id="pill-avatar" onclick="navTo('minha-conta')" style="cursor:pointer">?</div>
+      <span class="user-pill-name" id="pill-name" onclick="navTo('minha-conta')" style="cursor:pointer"></span>
+      <button class="user-pill-logout" onclick="clientLogout()" title="Sair">✕</button>
+    </div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" id="tab-agendar"      onclick="navTo('client')">✂ Agendar</button>
+      <button class="nav-tab"        id="tab-minha-conta"  onclick="navTo('minha-conta')">👤 Conta</button>
+      <button class="nav-tab"        id="tab-barber"       onclick="navTo('barber-gate')">✂ Barbeiro</button>
+      <button class="nav-tab"        id="tab-admin"        onclick="navTo('admin-gate')">⚙ Admin</button>
+      <button class="nav-tab"        id="tab-sobre"        onclick="navTo('sobre')">📍 Sobre</button>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════ AGENDAR ═══════════ -->
+<div id="view-client" class="view active">
+
+  <!-- Notification permission banner -->
+  <div class="notif-banner" id="notif-banner-client">
+    <div class="notif-banner-icon">🔔</div>
+    <div class="notif-banner-text">
+      <strong>Ative as notificações</strong>
+      <span>Receba um lembrete 15 minutos antes do seu horário</span>
+    </div>
+    <div class="notif-banner-actions">
+      <button class="btn btn-gold btn-sm" onclick="requestNotifPermission('client')">Ativar</button>
+      <button class="btn btn-outline btn-sm" onclick="dismissNotifBanner('client')">Agora não</button>
+    </div>
+  </div>
+  <div class="steps">
+    <div class="step active" id="s1"><div class="step-num">1</div><span class="step-label">Barbeiro</span></div>
+    <div class="step-sep"></div>
+    <div class="step" id="s2"><div class="step-num">2</div><span class="step-label">Data</span></div>
+    <div class="step-sep"></div>
+    <div class="step" id="s3"><div class="step-num">3</div><span class="step-label">Dados</span></div>
+    <div class="step-sep"></div>
+    <div class="step" id="s4"><div class="step-num">4</div><span class="step-label">Confirmar</span></div>
+  </div>
+
+  <div id="client-step1">
+    <div class="section-title">Escolha o Barbeiro</div>
+    <div class="gold-line"></div>
+    <p class="section-sub">Selecione com quem você quer ser atendido</p>
+    <div class="barbers-grid" id="barbers-grid"></div>
+    <div style="text-align:right">
+      <button class="btn btn-gold" onclick="nextStep(2)" id="btn-next1" disabled>Próximo &rarr;</button>
+    </div>
+  </div>
+
+  <div id="client-step2" style="display:none">
+    <div class="section-title">Escolha a Data</div>
+    <div class="gold-line"></div>
+    <div class="form-card">
+      <div class="calendar-header">
+        <button class="cal-nav" onclick="changeMonth(-1)">&#8249;</button>
+        <div class="cal-month" id="cal-month-label"></div>
+        <button class="cal-nav" onclick="changeMonth(1)">&#8250;</button>
+      </div>
+      <div class="calendar-grid" id="calendar-grid"></div>
+      <div id="slots-section" style="display:none">
+        <div class="slots-title" id="slots-date-label">Horários disponíveis</div>
+        <div class="slots-grid" id="slots-grid"></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:12px;justify-content:space-between">
+      <button class="btn btn-outline" onclick="nextStep(1)">&larr; Voltar</button>
+      <button class="btn btn-gold" onclick="nextStep(3)" id="btn-next2" disabled>Próximo &rarr;</button>
+    </div>
+  </div>
+
+  <div id="client-step3" style="display:none">
+    <div class="section-title">Seus Dados</div>
+    <div class="gold-line"></div>
+    <div class="form-card">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Nome completo *</label>
+          <input type="text" id="client-name" placeholder="João Silva" />
+        </div>
+        <div class="form-group">
+          <label>WhatsApp *</label>
+          <input type="tel" id="client-phone" placeholder="(31) 99999-9999" />
+        </div>
+        <div class="form-group full">
+          <label>Serviço *</label>
+          <select id="client-service">
+            <option value="">Selecione o serviço</option>
+            <option value="Corte Simples">Corte Simples — R$ 35</option>
+            <option value="Corte + Barba">Corte + Barba — R$ 55</option>
+            <option value="Barba">Barba — R$ 30</option>
+            <option value="Progressiva Masculina">Progressiva Masculina — R$ 80</option>
+            <option value="Hidratação">Hidratação — R$ 45</option>
+            <option value="Pigmentação">Pigmentação de Barba — R$ 40</option>
+          </select>
+        </div>
+        <div class="form-group full">
+          <label>Observações (opcional)</label>
+          <textarea id="client-obs" rows="2" placeholder="Ex: prefiro scissor cut, deixe a franja longa..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:12px;justify-content:space-between">
+      <button class="btn btn-outline" onclick="nextStep(2)">&larr; Voltar</button>
+      <button class="btn btn-gold" onclick="nextStep(4)">Revisar &rarr;</button>
+    </div>
+  </div>
+
+  <div id="client-step4" style="display:none">
+    <div class="section-title">Confirmar Agendamento</div>
+    <div class="gold-line"></div>
+    <div class="summary-card" id="booking-summary"></div>
+    <div class="form-card" style="margin-bottom:20px">
+      <p style="font-size:13px;color:var(--muted);line-height:1.6">
+        ✅ Ao confirmar, seu horário ficará reservado.<br>
+        👤 Acesse <b>Minha Conta</b> para ver e cancelar seus agendamentos.<br>
+        ⚠️ Cancelamentos devem ser feitos com no mínimo 2 horas de antecedência.
+      </p>
+    </div>
+    <div class="confirm-actions">
+      <button class="btn btn-outline" onclick="nextStep(3)">&larr; Editar</button>
+      <button class="btn btn-gold" onclick="confirmBooking()">✓ Confirmar Agendamento</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ MINHA CONTA ═══════════ -->
+<div id="view-minha-conta" class="view" style="display:none">
+
+  <!-- Notification banner -->
+  <div class="notif-banner" id="notif-banner-minha-conta">
+    <div class="notif-banner-icon">🔔</div>
+    <div class="notif-banner-text">
+      <strong>Ative as notificações</strong>
+      <span>Receba um lembrete 15 minutos antes do seu horário</span>
+    </div>
+    <div class="notif-banner-actions">
+      <button class="btn btn-gold btn-sm" onclick="requestNotifPermission('minha-conta')">Ativar</button>
+      <button class="btn btn-outline btn-sm" onclick="dismissNotifBanner('minha-conta')">Agora não</button>
+    </div>
+  </div>
+
+  <!-- Gate: login / cadastro -->
+  <div id="auth-section">
+    <div class="auth-card">
+      <div class="section-title" style="font-size:26px;text-align:center">Minha Conta</div>
+      <div class="gold-line" style="margin:8px auto 20px"></div>
+
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tab-login-btn" onclick="switchAuthTab('login')">Entrar</button>
+        <button class="auth-tab" id="tab-reg-btn" onclick="switchAuthTab('register')">Cadastrar</button>
+      </div>
+
+      <!-- LOGIN -->
+      <div id="auth-login">
+        <div class="form-group" style="margin-bottom:14px">
+          <label>WhatsApp</label>
+          <input type="tel" id="login-phone" placeholder="(31) 99999-9999" onkeydown="if(event.key==='Enter')clientLogin()" />
+        </div>
+        <div class="form-group" style="margin-bottom:20px">
+          <label>Senha</label>
+          <input type="password" id="login-pass" placeholder="••••••" onkeydown="if(event.key==='Enter')clientLogin()" />
+        </div>
+        <button class="btn btn-gold" style="width:100%" onclick="clientLogin()">Entrar</button>
+        <p class="hint-text">Não tem conta? <a onclick="switchAuthTab('register')">Cadastre-se grátis</a></p>
+      </div>
+
+      <!-- CADASTRO -->
+      <div id="auth-register" style="display:none">
+        <div class="form-group" style="margin-bottom:14px">
+          <label>Nome completo</label>
+          <input type="text" id="reg-name" placeholder="João Silva" />
+        </div>
+        <div class="form-group" style="margin-bottom:14px">
+          <label>WhatsApp (será seu login)</label>
+          <input type="tel" id="reg-phone" placeholder="(31) 99999-9999" />
+        </div>
+        <div class="form-group" style="margin-bottom:14px">
+          <label>Senha</label>
+          <input type="password" id="reg-pass" placeholder="Mínimo 6 caracteres" />
+        </div>
+        <div class="form-group" style="margin-bottom:20px">
+          <label>Confirmar senha</label>
+          <input type="password" id="reg-pass2" placeholder="Repita a senha" onkeydown="if(event.key==='Enter')clientRegister()" />
+        </div>
+        <button class="btn btn-gold" style="width:100%" onclick="clientRegister()">Criar conta</button>
+        <p class="hint-text">Já tem conta? <a onclick="switchAuthTab('login')">Entrar</a></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Painel logado -->
+  <div id="my-account-section" style="display:none">
+    <!-- Sub-abas -->
+    <div style="display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap">
+      <button class="filter-btn active" id="sub-tab-agendamentos" onclick="switchAccountTab('agendamentos',this)">📅 Agendamentos</button>
+      <button class="filter-btn" id="sub-tab-pagamentos" onclick="switchAccountTab('pagamentos',this)">💳 Pagamentos</button>
+    </div>
+
+    <!-- Seção Agendamentos -->
+    <div id="account-agendamentos">
+      <div class="account-profile-card">
+        <div class="profile-edit">
+          <div class="section-title" style="font-size:24px">Meu Perfil</div>
+          <div class="gold-line" style="margin-bottom:12px;width:30px"></div>
+          <div class="form-group">
+            <label>Nome</label>
+            <input type="text" id="profile-name" placeholder="Seu nome completo" />
+          </div>
+          <div class="form-group">
+            <label>WhatsApp</label>
+            <input type="text" id="profile-phone" placeholder="(31) 99999-9999" />
+          </div>
+          <button class="btn btn-gold" onclick="saveClientProfile()">Salvar perfil</button>
+        </div>
+        <div class="profile-stats">
+          <div class="stat-card">
+            <div class="stat-label">Visitas</div>
+            <div class="stat-value" id="stat-visits">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Total gasto</div>
+            <div class="stat-value" id="stat-spent">R$ 0,00</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Próximo agendamento</div>
+            <div class="stat-value" id="stat-next">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Última visita</div>
+            <div class="stat-value" id="stat-last">—</div>
+          </div>
+        </div>
+      </div>
+      <div class="my-header">
+        <div>
+          <div class="section-title" style="font-size:28px">Meus Agendamentos</div>
+          <div class="gold-line" style="margin-bottom:0"></div>
+        </div>
+        <button class="btn btn-gold" onclick="navTo('client')">+ Novo Agendamento</button>
+      </div>
+      <div id="my-appts-list"></div>
+    </div>
+
+    <!-- Seção Pagamentos -->
+    <div id="account-pagamentos" style="display:none">
+      <div class="section-title" style="font-size:28px">Pagamentos</div>
+      <div class="gold-line"></div>
+      <p style="font-size:14px;color:var(--muted);margin-bottom:20px;text-align:center">Sistema de pagamentos em breve! 🚀</p>
+
+      <!-- Método de Pagamento -->
+      <div class="payment-method-selector">
+        <button class="payment-method-btn active" onclick="selectPaymentMethod('cartao',this)">💳 Cartão de Crédito</button>
+        <button class="payment-method-btn" onclick="selectPaymentMethod('pix',this)">📱 PIX</button>
+      </div>
+
+      <!-- Form Cartão -->
+      <div id="payment-cartao" class="payment-form">
+        <h3 style="font-size:18px;margin-bottom:12px">Dados do Cartão</h3>
+        <input type="text" placeholder="Número do cartão" id="card-number" maxlength="19" oninput="formatCardNumber(this)" />
+        <div style="display:flex;gap:8px">
+          <input type="text" placeholder="MM/AA" id="card-expiry" maxlength="5" oninput="formatExpiry(this)" style="flex:1" />
+          <input type="text" placeholder="CVV" id="card-cvv" maxlength="4" style="flex:1" />
+        </div>
+        <input type="text" placeholder="Nome no cartão" id="card-name" />
+        <button class="btn btn-gold" style="width:100%;margin-top:16px" onclick="processPayment('cartao')">Pagar com Cartão</button>
+      </div>
+
+      <!-- Form PIX -->
+      <div id="payment-pix" class="payment-form" style="display:none">
+        <h3 style="font-size:18px;margin-bottom:12px">Pagamento via PIX</h3>
+        <input type="text" placeholder="Chave PIX (CPF, e-mail, telefone ou chave aleatória)" id="pix-key" />
+        <button class="btn btn-gold" style="width:100%;margin-top:16px" onclick="processPayment('pix')">Gerar QR Code PIX</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ SOBRE ═══════════ -->
+<div id="view-sobre" class="view" style="display:none">
+  <div class="about-hero">
+    <div class="about-hero-logo">BarberBook <span class="logo-accent" style="font-size:inherit">Studio</span></div>
+    <div class="about-hero-sub">Estilo, tradição e qualidade em cada detalhe</div>
+    <div class="gold-line" style="margin:12px auto 0"></div>
+  </div>
+
+  <p class="about-description">
+    Desde 2018, o BarberBook Studio se consolidou como referência em barberia moderna.
+    Nossa equipe combina técnicas clássicas com tendências atuais para entregar resultados
+    que vão além do esperado. Aqui, cada corte é pensado de forma personalizada para
+    ressaltar a identidade de cada cliente — do degradê impecável à barba alinhada a
+    navalha com perfeição. Venha nos conhecer e vivenciar essa experiência.
+  </p>
+
+  <!-- Horários -->
+  <h3 class="section-title" style="font-size:22px;margin-bottom:6px">Horário de Funcionamento</h3>
+  <div class="gold-line"></div>
+  <div class="form-card">
+    <div class="hours-grid">
+      <div class="hours-row"><span class="hours-day">Segunda-feira</span><span class="hours-time">08:00 — 18:00</span></div>
+      <div class="hours-row"><span class="hours-day">Terça-feira</span><span class="hours-time">08:00 — 18:00</span></div>
+      <div class="hours-row"><span class="hours-day">Quarta-feira</span><span class="hours-time">08:00 — 18:00</span></div>
+      <div class="hours-row"><span class="hours-day">Quinta-feira</span><span class="hours-time">08:00 — 18:00</span></div>
+      <div class="hours-row"><span class="hours-day">Sexta-feira</span><span class="hours-time">08:00 — 18:00</span></div>
+      <div class="hours-row"><span class="hours-day">Sábado</span><span class="hours-time">08:00 — 14:00</span></div>
+      <div class="hours-row closed"><span class="hours-day">Domingo</span><span class="hours-time">Fechado</span></div>
+    </div>
+  </div>
+
+  <!-- Localização -->
+  <h3 class="section-title" style="font-size:22px;margin-top:24px;margin-bottom:6px">Localização</h3>
+  <div class="gold-line"></div>
+  <div class="info-card">
+    <div class="info-icon">📍</div>
+    <div class="info-content">
+      <div class="info-label">Endereço</div>
+      <div class="info-value">Rua dos Barbeiros, 42 — Centro</div>
+      <div class="info-sub">Belo Horizonte, MG — CEP 30100-000</div>
+    </div>
+  </div>
+
+  <!-- Mapa -->
+  <div class="map-wrap">
+    <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3751.028006609848!2d-43.9404788!3d-19.9167268!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0xa690cac1547c37%3A0xa7a4c06e2e36e19a!2sPra%C3%A7a%20Sete%20de%20Setembro%2C%20Belo%20Horizonte%20-%20MG!5e0!3m2!1spt-BR!2sbr!4v1700000000000!5m2!1spt-BR!2sbr" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+  </div>
+
+  <!-- Contato -->
+  <h3 class="section-title" style="font-size:22px;margin-top:24px;margin-bottom:6px">Contato</h3>
+  <div class="gold-line"></div>
+  <div class="info-card">
+    <div class="info-icon">📱</div>
+    <div class="info-content">
+      <div class="info-label">WhatsApp</div>
+      <div class="info-value"><a href="https://wa.me/5531999998888" target="_blank">(31) 99999-8888</a></div>
+      <div class="info-sub">Respostas em horário comercial</div>
+    </div>
+  </div>
+  <div class="info-card">
+    <div class="info-icon">📧</div>
+    <div class="info-content">
+      <div class="info-label">E-mail</div>
+      <div class="info-value"><a href="mailto:contato@barberbookstudio.com.br">contato@barberbookstudio.com.br</a></div>
+    </div>
+  </div>
+  <div class="info-card">
+    <div class="info-icon">📞</div>
+    <div class="info-content">
+      <div class="info-label">Telefone Fixo</div>
+      <div class="info-value">(31) 3200-1034</div>
+    </div>
+  </div>
+
+  <!-- Redes Sociais -->
+  <h3 class="section-title" style="font-size:22px;margin-top:24px;margin-bottom:6px">Redes Sociais</h3>
+  <div class="gold-line"></div>
+  <p class="section-sub">Siga a gente e confira novidades, promoções e o dia a dia da barbearia</p>
+  <div class="social-links">
+    <!-- Instagram -->
+    <a class="social-link" href="https://instagram.com/barberbookstudio" target="_blank" title="Instagram">
+      <svg viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.163-1.721 4.772-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.251-.16-4.771-1.776-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.252 1.72-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+    </a>
+    <!-- Facebook -->
+    <a class="social-link" href="https://facebook.com/barberbookstudio" target="_blank" title="Facebook">
+      <svg viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+    </a>
+    <!-- TikTok -->
+    <a class="social-link" href="https://tiktok.com/@barberbookstudio" target="_blank" title="TikTok">
+      <svg viewBox="0 0 24 24"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.95-.32-1.98-.26-2.89.04-.89.3-1.64.9-2.12 1.73-.38.66-.53 1.43-.52 2.17.01 1.33.47 2.65 1.35 3.61.87.95 2.13 1.38 3.4.92 1.06-.36 1.84-1.23 2.09-2.32.33-1.52.08-3.09-.02-4.64-.15-2.31-.04-4.62-.01-6.94.06-1.59.06-3.18.06-4.76z"/></svg>
+    </a>
+    <!-- YouTube -->
+    <a class="social-link" href="https://youtube.com/@barberbookstudio" target="_blank" title="YouTube">
+      <svg viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+    </a>
+    <!-- X / Twitter -->
+    <a class="social-link" href="https://x.com/barberbook" target="_blank" title="X (Twitter)">
+      <svg viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+    </a>
+  </div>
+</div>
+
+<!-- ═══════════ ADMIN GATE ═══════════ -->
+<div id="view-admin-gate" class="view" style="display:none">
+  <div class="admin-login">
+    <div class="section-title" style="font-size:28px">Admin</div>
+    <div class="gold-line"></div>
+    <p class="section-sub">Acesso restrito ao barbeiro</p>
+    <div class="form-group" style="margin-bottom:16px">
+      <label>Senha</label>
+      <input type="password" id="admin-pass" placeholder="••••••" onkeydown="if(event.key==='Enter')adminLogin()" />
+    </div>
+    <button class="btn btn-gold" style="width:100%" onclick="adminLogin()">Entrar</button>
+    <p style="font-size:11px;color:var(--muted);text-align:center;margin-top:16px">Senha padrão: <b>1234</b></p>
+  </div>
+</div>
+
+<!-- ═══════════ BARBER GATE ═══════════ -->
+<div id="view-barber-gate" class="view" style="display:none">
+  <div class="admin-login">
+    <div class="section-title" style="font-size:28px">Barbeiro</div>
+    <div class="gold-line"></div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:20px;text-align:center">Acesse seus agendamentos</p>
+    <select id="barber-select" class="auth-input" style="margin-bottom:12px">
+      <option value="">Selecione o barbeiro</option>
+      <option value="1">Carlos Eduardo</option>
+      <option value="2">Rafael Mendes</option>
+      <option value="3">Lucas Souza</option>
+    </select>
+    <input type="password" id="barber-pass" placeholder="••••••" onkeydown="if(event.key==='Enter')barberLogin()" />
+    <button class="btn btn-gold" style="width:100%;margin-top:12px" onclick="barberLogin()">Entrar</button>
+    <p style="font-size:11px;color:var(--muted);text-align:center;margin-top:16px">Senha padrão: <b>1234</b></p>
+  </div>
+</div>
+
+<!-- ═══════════ ADMIN PANEL ═══════════ -->
+<div id="view-admin" class="view" style="display:none">
+
+  <!-- Notification permission banner for admin -->
+  <div class="notif-banner" id="notif-banner-admin">
+    <div class="notif-banner-icon">🔔</div>
+    <div class="notif-banner-text">
+      <strong>Ative as notificações do admin</strong>
+      <span>Seja avisado 15 min antes de cada agendamento</span>
+    </div>
+    <div class="notif-banner-actions">
+      <button class="btn btn-gold btn-sm" onclick="requestNotifPermission('admin')">Ativar</button>
+      <button class="btn btn-outline btn-sm" onclick="dismissNotifBanner('admin')">Agora não</button>
+    </div>
+  </div>
+
+  <div class="stats-row" id="admin-stats"></div>
+
+  <!-- ── GESTÃO DE AGENDA ── -->
+  <div class="agenda-section">
+    <div class="agenda-section-title">📅 Gestão de Agenda</div>
+
+    <!-- Sub-abas -->
+    <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
+      <button class="filter-btn active" id="agenda-tab-dias"    onclick="switchAgendaTab('dias',this)">Dias específicos</button>
+      <button class="filter-btn"        id="agenda-tab-semana"  onclick="switchAgendaTab('semana',this)">Horários por semana</button>
+    </div>
+
+    <!-- ABA 1: Bloquear / personalizar dias específicos -->
+    <div id="agenda-dias">
+      <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
+        Clique em um dia para bloqueá-lo (feriado, folga) ou personalizar os horários dele.
+      </p>
+
+      <!-- Mini calendário -->
+      <div class="agenda-cal-header">
+        <button class="cal-nav" onclick="agendaChangeMonth(-1)">&#8249;</button>
+        <div class="agenda-cal-month" id="agenda-cal-month"></div>
+        <button class="cal-nav" onclick="agendaChangeMonth(1)">&#8250;</button>
+      </div>
+      <div class="agenda-cal-grid" id="agenda-cal-grid"></div>
+
+      <!-- Legenda -->
+      <div class="agenda-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--border)"></div> Normal</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--danger);opacity:0.5"></div> Bloqueado</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--success)"></div> Horários customizados</div>
+      </div>
+
+      <!-- Editor do dia selecionado -->
+      <div id="agenda-day-editor" style="display:none"></div>
+    </div>
+
+    <!-- ABA 2: Horários padrão por dia da semana -->
+    <div id="agenda-semana" style="display:none">
+      <p style="font-size:12px;color:var(--muted);margin-bottom:14px">
+        Define os horários padrão de cada dia da semana. Dias específicos no calendário sobrepõem esses valores.
+      </p>
+      <div class="week-hours-grid" id="week-hours-grid"></div>
+      <button class="btn btn-gold" style="margin-top:16px;width:100%" onclick="saveWeekHours()">💾 Salvar horários</button>
+    </div>
+  </div>
+
+  <div class="admin-divider"></div>
+  <div class="report-section">
+    <div class="report-header">
+      <div class="report-title">💰 Relatório de Faturamento</div>
+      <div class="period-selector">
+        <button class="period-btn active" onclick="setPeriod('hoje',this)">Hoje</button>
+        <button class="period-btn" onclick="setPeriod('semana',this)">Semana</button>
+        <button class="period-btn" onclick="setPeriod('mes',this)">Mês</button>
+        <button class="period-btn" onclick="setPeriod('mes_passado',this)">Mês Passado</button>
+        <button class="period-btn" onclick="setPeriod('personalizado',this)">Personalizado</button>
+      </div>
+    </div>
+
+    <!-- Seletor de datas personalizado -->
+    <div class="custom-range" id="custom-range-picker" style="display:none">
+      <label style="font-size:12px;color:var(--muted);font-weight:600">De</label>
+      <input type="date" id="report-from" onchange="renderReport()" />
+      <label style="font-size:12px;color:var(--muted);font-weight:600">Até</label>
+      <input type="date" id="report-to" onchange="renderReport()" />
+    </div>
+
+    <!-- KPIs -->
+    <div class="kpi-row" id="report-kpis"></div>
+
+    <!-- Gráfico de barras (faturamento por dia) -->
+    <div class="report-title" style="font-size:14px;margin-bottom:12px;letter-spacing:1px;color:var(--muted)">FATURAMENTO POR DIA</div>
+    <div class="chart-wrap">
+      <svg id="revenue-chart" class="chart-svg" height="160"></svg>
+    </div>
+
+    <!-- Breakdowns: serviço + barbeiro -->
+    <div class="breakdown-grid" id="report-breakdowns"></div>
+  </div>
+
+  <div class="admin-divider"></div>
+  <div class="admin-header">
+    <div>
+      <div class="section-title" style="font-size:28px">Agendamentos</div>
+      <div class="gold-line" style="margin-bottom:0"></div>
+    </div>
+    <div class="admin-filters">
+      <button class="filter-btn active" onclick="filterAppts('all',this)">Todos</button>
+      <button class="filter-btn" onclick="filterAppts('hoje',this)">Hoje</button>
+      <button class="filter-btn" onclick="filterAppts('semana',this)">Esta semana</button>
+      <button class="filter-btn" onclick="filterAppts('confirmado',this)">Confirmados</button>
+      <button class="filter-btn" onclick="filterAppts('cancelado',this)">Cancelados</button>
+      <select id="admin-barber-filter" onchange="filterByBarber(this.value)" class="filter-select">
+        <option value="">Todos os barbeiros</option>
+        <option value="1">Carlos Eduardo</option>
+        <option value="2">Rafael Mendes</option>
+        <option value="3">Lucas Souza</option>
+      </select>
+    </div>
+  </div>
+  <div class="search-box">
+    <span class="search-icon">🔍</span>
+    <input type="text" id="admin-search" placeholder="Buscar por nome ou WhatsApp..." oninput="renderAdminAppts()" />
+  </div>
+  <div class="appointments-list" id="admin-appts-list"></div>
+
+  <div class="admin-divider"></div>
+  <div class="section-title" style="font-size:20px">Gerenciar Senhas dos Barbeiros</div>
+  <div class="gold-line" style="width:30px"></div>
+  <div style="margin-top:16px">
+    <select id="admin-barber-select" style="width:100%;margin-bottom:8px">
+      <option value="">Selecione o barbeiro</option>
+      <option value="1">Carlos Eduardo</option>
+      <option value="2">Rafael Mendes</option>
+      <option value="3">Lucas Souza</option>
+    </select>
+    <input type="password" id="admin-new-pass" placeholder="Nova senha ••••••" style="width:100%;margin-bottom:8px" />
+    <button class="btn btn-gold" onclick="adminChangeBarberPassword()">Alterar senha</button>
+  </div>
+
+  <div style="text-align:right;margin-top:24px">
+    <button class="btn btn-outline btn-sm" onclick="adminLogout()">Sair</button>
+  </div>
+</div>
+
+<!-- ═══════════ BARBER PANEL ═══════════ -->
+<div id="view-barber" class="view" style="display:none">
+  <div class="section-title" style="font-size:28px">Meus Agendamentos</div>
+  <div class="gold-line"></div>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:20px">Olá, <span id="barber-name"></span>! Aqui estão seus agendamentos.</p>
+
+  <!-- Notification permission banner for barber -->
+  <div class="notif-banner" id="notif-banner-barber">
+    <div class="notif-banner-icon">🔔</div>
+    <div class="notif-banner-text">
+      <strong>Ative as notificações do barbeiro</strong>
+      <span>Seja avisado 15 min antes de cada agendamento</span>
+    </div>
+    <div class="notif-banner-actions">
+      <button class="btn btn-gold btn-sm" onclick="requestNotifPermission('barber')">Ativar</button>
+      <button class="btn btn-outline btn-sm" onclick="dismissNotifBanner('barber')">Agora não</button>
+    </div>
+  </div>
+
+  <div class="admin-filters">
+    <button class="filter-btn active" onclick="filterBarberAppts('all',this)">Todos</button>
+    <button class="filter-btn" onclick="filterBarberAppts('hoje',this)">Hoje</button>
+    <button class="filter-btn" onclick="filterBarberAppts('semana',this)">Esta semana</button>
+    <button class="filter-btn" onclick="filterBarberAppts('confirmado',this)">Confirmados</button>
+    <button class="filter-btn" onclick="filterBarberAppts('cancelado',this)">Cancelados</button>
+  </div>
+  <div class="search-box">
+    <span class="search-icon">🔍</span>
+    <input type="text" id="barber-search" placeholder="Buscar por nome ou WhatsApp..." oninput="renderBarberAppts()" />
+  </div>
+  <div class="appointments-list" id="barber-appts-list"></div>
+
+  <div style="text-align:right;margin-top:24px">
+    <button class="btn btn-outline btn-sm" onclick="barberLogout()">Sair</button>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  BarberBook — Lógica principal
+// ═══════════════════════════════════════════════════════
+
+// ─── CONFIGURAÇÕES ✏️ ─────────────────────────────────
+const ADMIN_PASS = '1234';
+
+// ✏️ COLOQUE AQUI O NÚMERO DO WHATSAPP DA BARBEARIA (só números, com DDI+DDD)
+// Exemplo: '5531999998888'  →  55 (Brasil) + 31 (DDD) + número
+const WHATSAPP_BARBEARIA = '5531989736863';
+
+const BARBERS = [
+  { id:1, name:'Carlos Eduardo', specialty:'Fade & Degradê',     rating:'⭐ 4.9', emoji:'CE', color:'#1a2a1a', accent:'#4caf88', password:'1234' },
+  { id:2, name:'Rafael Mendes',  specialty:'Barba & Navalha',    rating:'⭐ 4.8', emoji:'RM', color:'#1a1a2a', accent:'#c9a84c', password:'1234' },
+  { id:3, name:'Lucas Souza',    specialty:'Tesoura & Clássico', rating:'⭐ 4.7', emoji:'LS', color:'#2a1a1a', accent:'#e05252', password:'1234' },
+];
+
+// Load barber passwords from localStorage
+BARBERS.forEach(b => {
+  const stored = localStorage.getItem('barber_pass_' + b.id);
+  if (stored) b.password = stored;
+});
+
+const WORK_HOURS = [
+  '08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30',
+  '13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30'
+];
+
+// ─── ESTADO ───────────────────────────────────────────
+let db, fbFns;
+let allAppts = [];
+let currentClient = null; // { firestoreId, phone, name }
+let currentBarber = null; // { id, name }
+
+const today = new Date();
+today.setHours(0,0,0,0);
+
+let state = {
+  barberId:null, date:null, time:null,
+  calYear:today.getFullYear(), calMonth:today.getMonth(),
+  adminFilter:'all', adminBarberFilter: null,
+  barberFilter:'all'
+};
+
+const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho',
+                'Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const DAYS   = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+
+// ─── ESTADO DA AGENDA ─────────────────────────────────
+// blockedDates: Set de strings 'YYYY-MM-DD' bloqueadas
+// customHours:  { 'YYYY-MM-DD': ['08:00','09:00',...] } — horários do dia
+// weekHours:    { 0:null, 1:['08:00',...], ... } — padrão por dia da semana (0=Dom)
+let blockedDates = new Set();
+let customHours  = {};   // por data específica
+let weekHours    = {};   // por dia da semana (chave: 0-6)
+let agendaCalYear  = today.getFullYear();
+let agendaCalMonth = today.getMonth();
+let agendaSelectedDate = null;
+
+// Todos os horários possíveis (base para seleção)
+const ALL_HOURS = [
+  '07:00','07:30','08:00','08:30','09:00','09:30','10:00','10:30',
+  '11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30',
+  '15:00','15:30','16:00','16:30','17:00','17:30','18:00','18:30','19:00'
+];
+
+const WEEK_NAMES = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+
+// ─── FIREBASE INIT ────────────────────────────────────
+window.addEventListener('firebase-ready', () => {
+  const f = window._fb;
+  db = f.db; fbFns = f;
+
+  const q = f.query(f.collection(db,'agendamentos'), f.orderBy('date'), f.orderBy('time'));
+  f.onSnapshot(q, snap => {
+    allAppts = snap.docs.map(d => ({ firestoreId:d.id, ...d.data() }));
+    renderCalendar();
+    if (state.date) renderSlots(state.date);
+    if (document.getElementById('view-admin').classList.contains('active')) renderAdmin();
+    if (currentClient && document.getElementById('my-account-section').style.display!=='none') renderMyAppts();
+    setTimeout(scheduleAllReminders, 0);
+  }, err => {
+    console.error(err);
+    toast('❌ Erro ao conectar com o banco de dados.');
+  });
+
+  // ── Carrega configuração de agenda em tempo real ──
+  f.onSnapshot(f.doc(db, 'config', 'agenda'), snap => {
+    if (snap.exists()) {
+      const data = snap.data();
+      blockedDates = new Set(data.blockedDates || []);
+      customHours  = data.customHours  || {};
+      weekHours    = data.weekHours    || {};
+    } else {
+      blockedDates = new Set();
+      customHours  = {};
+      weekHours    = {};
+    }
+    renderCalendar();
+    if (state.date) renderSlots(state.date);
+    if (document.getElementById('view-admin').classList.contains('active')) {
+      renderAgendaCal();
+      renderWeekHoursEditor();
+    }
+  });
+
+  const saved = sessionStorage.getItem('bb_client');
+  if (saved) { try { currentClient = JSON.parse(saved); updateClientUI(); } catch{} }
+
+  renderBarbers();
+  renderCalendar();
+});
+
+// ─── NAVEGAÇÃO ────────────────────────────────────────
+function navTo(name) {
+  if (name === 'minha-conta') {
+    showView('minha-conta');
+    if (currentClient) {
+      document.getElementById('auth-section').style.display = 'none';
+      document.getElementById('my-account-section').style.display = 'block';
+      renderMyAppts();
+    } else {
+      document.getElementById('auth-section').style.display = 'block';
+      document.getElementById('my-account-section').style.display = 'none';
+    }
+  } else {
+    showView(name);
+  }
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  const map = { client:'tab-agendar', 'minha-conta':'tab-minha-conta', 'sobre':'tab-sobre', 'barber-gate':'tab-barber', barber:'tab-barber', 'admin-gate':'tab-admin', admin:'tab-admin' };
+  document.getElementById(map[name])?.classList.add('active');
+
+  // Re-exibe banner de notificação na view correta
+  if (Notification.permission === 'default' && !sessionStorage.getItem('notif-dismissed')) {
+    hideBanners();
+    if (name === 'client')      document.getElementById('notif-banner-client').classList.add('show');
+    if (name === 'minha-conta') document.getElementById('notif-banner-minha-conta').classList.add('show');
+    if (name === 'barber')      document.getElementById('notif-banner-barber').classList.add('show');
+    if (name === 'admin')       document.getElementById('notif-banner-admin').classList.add('show');
+  }
+}
+
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v => { v.style.display='none'; v.classList.remove('active'); });
+  const el = document.getElementById('view-'+name);
+  el.style.display = 'block';
+  setTimeout(() => el.classList.add('active'), 10);
+}
+
+// ─── AUTH TABS ────────────────────────────────────────
+function switchAuthTab(tab) {
+  document.getElementById('auth-login').style.display    = tab==='login'    ? 'block' : 'none';
+  document.getElementById('auth-register').style.display = tab==='register' ? 'block' : 'none';
+  document.getElementById('tab-login-btn').classList.toggle('active', tab==='login');
+  document.getElementById('tab-reg-btn').classList.toggle('active', tab==='register');
+}
+
+// ─── HASH DE SENHA (djb2) ─────────────────────────────
+// Não é criptografia forte, mas suficiente para este uso.
+// Para produção avançada, use Firebase Authentication.
+function hashPass(str) {
+  let h = 5381;
+  for (let i=0; i<str.length; i++) h = ((h<<5)+h) ^ str.charCodeAt(i);
+  return (h>>>0).toString(16);
+}
+
+// ─── CADASTRO ─────────────────────────────────────────
+async function clientRegister() {
+  const name  = document.getElementById('reg-name').value.trim();
+  const phone = document.getElementById('reg-phone').value.trim().replace(/\D/g,'');
+  const pass  = document.getElementById('reg-pass').value;
+  const pass2 = document.getElementById('reg-pass2').value;
+
+  if (!name)             { toast('⚠️ Informe seu nome'); return; }
+  if (phone.length < 10) { toast('⚠️ WhatsApp inválido'); return; }
+  if (pass.length < 6)   { toast('⚠️ Senha mínima: 6 caracteres'); return; }
+  if (pass !== pass2)    { toast('⚠️ As senhas não coincidem'); return; }
+
+  try {
+    // Verifica duplicata
+    const snap = await fbFns.getDocs(
+      fbFns.query(fbFns.collection(db,'clientes'), fbFns.where('phone','==',phone))
+    );
+    if (!snap.empty) { toast('⚠️ WhatsApp já cadastrado. Faça login.'); switchAuthTab('login'); return; }
+
+    const ref = await fbFns.addDoc(fbFns.collection(db,'clientes'), {
+      name, phone, passHash: hashPass(pass), createdAt: fbFns.serverTimestamp()
+    });
+
+    currentClient = { firestoreId:ref.id, phone, name };
+    sessionStorage.setItem('bb_client', JSON.stringify(currentClient));
+    updateClientUI();
+    navTo('minha-conta');
+    toast('🎉 Conta criada! Bem-vindo, '+name+'!');
+  } catch(err) { console.error(err); toast('❌ Erro ao criar conta.'); }
+}
+
+// ─── LOGIN ────────────────────────────────────────────
+async function clientLogin() {
+  const phone = document.getElementById('login-phone').value.trim().replace(/\D/g,'');
+  const pass  = document.getElementById('login-pass').value;
+
+  if (phone.length < 10) { toast('⚠️ WhatsApp inválido'); return; }
+  if (!pass)              { toast('⚠️ Informe a senha'); return; }
+
+  try {
+    const snap = await fbFns.getDocs(
+      fbFns.query(fbFns.collection(db,'clientes'), fbFns.where('phone','==',phone))
+    );
+    if (snap.empty) { toast('❌ WhatsApp não cadastrado'); return; }
+
+    const data = snap.docs[0].data();
+    if (data.passHash !== hashPass(pass)) { toast('❌ Senha incorreta'); return; }
+
+    currentClient = { firestoreId:snap.docs[0].id, phone, name:data.name };
+    sessionStorage.setItem('bb_client', JSON.stringify(currentClient));
+    updateClientUI();
+    navTo('minha-conta');
+    toast('✅ Bem-vindo, '+data.name+'!');
+  } catch(err) { console.error(err); toast('❌ Erro ao fazer login.'); }
+}
+
+// ─── LOGOUT ───────────────────────────────────────────
+function clientLogout() {
+  currentClient = null;
+  sessionStorage.removeItem('bb_client');
+  updateClientUI();
+  navTo('client');
+  toast('👋 Até logo!');
+}
+
+// ─── UI DO USUÁRIO LOGADO ─────────────────────────────
+function updateClientUI() {
+  const pill = document.getElementById('user-pill');
+  if (currentClient) {
+    pill.style.display = 'flex';
+    document.getElementById('pill-name').textContent = currentClient.name.split(' ')[0];
+    document.getElementById('pill-avatar').textContent = currentClient.name[0].toUpperCase();
+    document.getElementById('profile-name').value = currentClient.name;
+    document.getElementById('profile-phone').value = currentClient.phone;
+  } else {
+    pill.style.display = 'none';
+  }
+}
+
+function renderClientProfile() {
+  if (!currentClient) return;
+  const phone = currentClient.phone.replace(/\D/g,'');
+  const appts = allAppts.filter(a => a.phone.replace(/\D/g,'') === phone);
+  const visits = appts.filter(a => a.status !== 'cancelado').length;
+  const total = appts.reduce((sum,a) => {
+    const value = parseFloat((a.price||'').replace(/[^\d,\.]/g,'').replace(',', '.')) || 0;
+    return sum + value;
+  },0);
+  const nowStr = formatDate(today);
+  const next = appts
+    .filter(a => a.date >= nowStr && a.status !== 'cancelado')
+    .sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time))[0];
+  const last = appts
+    .filter(a => a.date < nowStr && a.status !== 'cancelado')
+    .sort((a,b) => (b.date+b.time).localeCompare(a.date+a.time))[0];
+
+  document.getElementById('stat-visits').textContent = visits;
+  document.getElementById('stat-spent').textContent = 'R$ ' + total.toFixed(2).replace('.', ',');
+  document.getElementById('stat-next').textContent = next ? `${next.date} ${next.time}` : '—';
+  document.getElementById('stat-last').textContent = last ? `${last.date} ${last.time}` : '—';
+}
+
+async function saveClientProfile() {
+  if (!currentClient) return;
+  const name = document.getElementById('profile-name').value.trim();
+  const phone = document.getElementById('profile-phone').value.trim().replace(/\D/g,'');
+  if (!name) { toast('⚠️ Informe seu nome'); return; }
+  if (phone.length < 10) { toast('⚠️ WhatsApp inválido'); return; }
+
+  const oldPhone = currentClient.phone.replace(/\D/g,'');
+  try {
+    await fbFns.updateDoc(fbFns.doc(db,'clientes',currentClient.firestoreId), { name, phone });
+    const clientUpdates = allAppts.filter(a => a.phone.replace(/\D/g,'') === oldPhone);
+    await Promise.all(clientUpdates.map(a => {
+      a.name = name;
+      a.phone = phone;
+      return fbFns.updateDoc(fbFns.doc(db,'agendamentos', a.firestoreId), { name, phone });
+    }));
+    currentClient.name = name;
+    currentClient.phone = phone;
+    sessionStorage.setItem('bb_client', JSON.stringify(currentClient));
+    updateClientUI();
+    renderMyAppts();
+    renderClientProfile();
+    toast('✅ Perfil atualizado!');
+  } catch(err) {
+    console.error(err);
+    toast('❌ Erro ao salvar perfil.');
+  }
+}
+
+// ─── MEUS AGENDAMENTOS ────────────────────────────────
+function renderMyAppts() {
+  if (!currentClient) return;
+  renderClientProfile();
+  const phone = currentClient.phone.replace(/\D/g,'');
+  const appts = allAppts
+    .filter(a => a.phone.replace(/\D/g,'') === phone)
+    .sort((a,b) => (b.date+b.time).localeCompare(a.date+a.time));
+
+  const list = document.getElementById('my-appts-list');
+  if (!appts.length) {
+    list.innerHTML = `<div class="empty-state">
+      <div class="empty-icon">📅</div>
+      <div class="empty-text">Você ainda não tem agendamentos.</div>
+      <button class="btn btn-gold" style="margin-top:16px" onclick="navTo('client')">Agendar agora</button>
+    </div>`;
+    return;
+  }
+
+  const nowStr = formatDate(today);
+  list.innerHTML = appts.map(a => {
+    const dt = new Date(a.date+'T00:00:00');
+    const dateLabel = `${DAYS[dt.getDay()]}, ${dt.getDate()} de ${MONTHS[dt.getMonth()]} de ${dt.getFullYear()}`;
+    const dateShort = `${dt.getDate()}/${dt.getMonth()+1}`;
+    const isUpcoming = a.date >= nowStr && a.status !== 'cancelado';
+    const barber = BARBERS.find(b => b.id===a.barberId);
+    const statusCls   = a.status==='confirmado'?'status-confirmed':a.status==='cancelado'?'status-cancelled':'status-pending';
+    const statusLabel = a.status==='confirmado'?'Confirmado':a.status==='cancelado'?'Cancelado':'Pendente';
+
+    return `
+    <div class="my-appt-card">
+      <div class="appt-time">
+        <div class="appt-time-main">${a.time}</div>
+        <div class="appt-time-date">${dateShort}</div>
+      </div>
+      <div style="flex:1">
+        <div style="font-weight:600;font-size:15px;display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          ${dateLabel}
+          ${isUpcoming?'<span class="upcoming-badge">Próximo</span>':''}
+        </div>
+        <div style="font-size:13px;color:var(--muted)">
+          ✂ ${barber?barber.name:'?'} &nbsp;·&nbsp; ${a.service}${a.price?' &nbsp;·&nbsp; '+a.price:''}
+        </div>
+      </div>
+      <div class="appt-status">
+        <span class="status-badge ${statusCls}">${statusLabel}</span>
+        ${isUpcoming?`<button class="btn btn-danger btn-sm" onclick="clientCancelAppt('${a.firestoreId}')">Cancelar</button>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function clientCancelAppt(fid) {
+  if (!confirm('Confirma o cancelamento deste agendamento?')) return;
+  try {
+    await fbFns.updateDoc(fbFns.doc(db,'agendamentos',fid),{status:'cancelado'});
+    cancelReminder(fid);
+    toast('🗑️ Agendamento cancelado.');
+  } catch(err) { console.error(err); toast('❌ Erro ao cancelar.'); }
+}
+
+// ─── BARBEIROS ────────────────────────────────────────
+function renderBarbers() {
+  document.getElementById('barbers-grid').innerHTML = BARBERS.map(b => `
+    <div class="barber-card ${state.barberId===b.id?'selected':''}" onclick="selectBarber(${b.id})">
+      <div class="barber-avatar" style="background:${b.color};border-color:${b.accent};color:${b.accent}">${b.emoji}</div>
+      <div class="barber-name">${b.name}</div>
+      <div class="barber-specialty">${b.specialty}</div>
+      <div class="barber-rating">${b.rating} (${20+b.id*7} avaliações)</div>
+    </div>`).join('');
+}
+
+function selectBarber(id) {
+  state.barberId=id; renderBarbers();
+  document.getElementById('btn-next1').disabled=false;
+}
+
+// ─── STEPS ────────────────────────────────────────────
+function fillStep3Form() {
+  const nameEl = document.getElementById('client-name');
+  const phoneEl = document.getElementById('client-phone');
+  if (currentClient) {
+    nameEl.value = currentClient.name;
+    phoneEl.value = currentClient.phone;
+    nameEl.readOnly = true;
+    phoneEl.readOnly = true;
+    nameEl.style.opacity = '0.7';
+    phoneEl.style.opacity = '0.7';
+  } else {
+    nameEl.readOnly = false;
+    phoneEl.readOnly = false;
+    nameEl.style.opacity = '';
+    phoneEl.style.opacity = '';
+  }
+}
+
+function nextStep(step) {
+  if (step===3) fillStep3Form();
+  if (step===4) {
+    const n=document.getElementById('client-name').value.trim();
+    const p=document.getElementById('client-phone').value.trim();
+    const s=document.getElementById('client-service').value;
+    if (!n){toast('⚠️ Informe seu nome');return}
+    if (!p){toast('⚠️ Informe seu WhatsApp');return}
+    if (!s){toast('⚠️ Selecione um serviço');return}
+    renderSummary();
+  }
+  for(let i=1;i<=4;i++){
+    const el=document.getElementById('client-step'+i);
+    if(el) el.style.display=i===step?'block':'none';
+  }
+  for(let i=1;i<=4;i++)
+    document.getElementById('s'+i).className='step'+(i<step?' done':i===step?' active':'');
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+// ─── CALENDÁRIO ───────────────────────────────────────
+function changeMonth(dir) {
+  state.calMonth+=dir;
+  if(state.calMonth<0){state.calMonth=11;state.calYear--}
+  if(state.calMonth>11){state.calMonth=0;state.calYear++}
+  state.date=null;state.time=null;
+  document.getElementById('btn-next2').disabled=true;
+  document.getElementById('slots-section').style.display='none';
+  renderCalendar();
+}
+
+function renderCalendar() {
+  document.getElementById('cal-month-label').textContent=`${MONTHS[state.calMonth]} ${state.calYear}`;
+  const grid=document.getElementById('calendar-grid');
+  grid.innerHTML=DAYS.map(d=>`<div class="cal-day-label">${d}</div>`).join('');
+  const first=new Date(state.calYear,state.calMonth,1).getDay();
+  const days=new Date(state.calYear,state.calMonth+1,0).getDate();
+  for(let i=0;i<first;i++) grid.innerHTML+=`<div class="cal-day empty"></div>`;
+  for(let d=1;d<=days;d++){
+    const dt=new Date(state.calYear,state.calMonth,d);dt.setHours(0,0,0,0);
+    const isPast=dt<today,isSun=dt.getDay()===0,isToday=dt.getTime()===today.getTime();
+    const dateStr=formatDate(dt),sel=state.date===dateStr;
+    const avail=!isPast&&!isSun&&getAvailableSlots(dateStr).length>0;
+    let cls='cal-day';
+    if(isPast||isSun)cls+=' past'; else if(sel)cls+=' selected'; else if(isToday)cls+=' today';
+    if(avail)cls+=' has-slots';
+    const click=(!isPast&&!isSun)?`onclick="selectDate('${dateStr}')"` :'';
+    grid.innerHTML+=`<div class="${cls}" ${click}>${d}</div>`;
+  }
+}
+
+function formatDate(dt){
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+}
+
+function selectDate(dateStr){
+  state.date=dateStr;state.time=null;
+  document.getElementById('btn-next2').disabled=true;
+  renderCalendar();renderSlots(dateStr);
+}
+
+// ─── HORÁRIOS EFETIVOS DO DIA ─────────────────────────
+// Retorna os horários corretos para uma data, respeitando:
+// 1. customHours (dia específico) > 2. weekHours (dia da semana) > 3. WORK_HOURS (padrão)
+function getHoursForDate(dateStr) {
+  if (customHours[dateStr])              return customHours[dateStr];
+  const dow = new Date(dateStr + 'T00:00:00').getDay();
+  if (weekHours[dow] !== undefined)      return weekHours[dow] || []; // [] = fechado
+  return WORK_HOURS;
+}
+
+function getAvailableSlots(dateStr){
+  if (blockedDates.has(dateStr)) return [];
+  const hours = getHoursForDate(dateStr);
+  const taken = allAppts.filter(a=>a.date===dateStr&&a.barberId===state.barberId&&a.status!=='cancelado').map(a=>a.time);
+  return hours.filter(h=>!taken.includes(h));
+}
+
+function renderCalendar() {
+  document.getElementById('cal-month-label').textContent=`${MONTHS[state.calMonth]} ${state.calYear}`;
+  const grid=document.getElementById('calendar-grid');
+  grid.innerHTML=DAYS.map(d=>`<div class="cal-day-label">${d}</div>`).join('');
+  const first=new Date(state.calYear,state.calMonth,1).getDay();
+  const days=new Date(state.calYear,state.calMonth+1,0).getDate();
+  for(let i=0;i<first;i++) grid.innerHTML+=`<div class="cal-day empty"></div>`;
+  for(let d=1;d<=days;d++){
+    const dt=new Date(state.calYear,state.calMonth,d);dt.setHours(0,0,0,0);
+    const isPast  = dt < today;
+    const isToday = dt.getTime()===today.getTime();
+    const dateStr = formatDate(dt);
+    const isBlocked = blockedDates.has(dateStr);
+    // domingo bloqueado por padrão a menos que weekHours[0] tenha horários
+    const isSunClosed = dt.getDay()===0 && !(weekHours[0]?.length);
+    const sel   = state.date===dateStr;
+    const avail = !isPast && !isBlocked && !isSunClosed && getAvailableSlots(dateStr).length>0;
+
+    let cls='cal-day';
+    if (isPast || isBlocked || isSunClosed) cls+=' past';
+    else if (sel)     cls+=' selected';
+    else if (isToday) cls+=' today';
+    if (avail) cls+=' has-slots';
+
+    const click = (!isPast && !isBlocked && !isSunClosed) ? `onclick="selectDate('${dateStr}')"` : '';
+    grid.innerHTML+=`<div class="${cls}" ${click}>${d}</div>`;
+  }
+}
+
+function renderSlots(dateStr){
+  document.getElementById('slots-section').style.display='block';
+  const dt=new Date(dateStr+'T00:00:00');
+  document.getElementById('slots-date-label').textContent=`Horários — ${DAYS[dt.getDay()]}, ${dt.getDate()} de ${MONTHS[dt.getMonth()]}`;
+
+  if (blockedDates.has(dateStr)) {
+    document.getElementById('slots-grid').innerHTML=`<div style="color:var(--danger);font-size:13px;padding:10px 0">🚫 Este dia está bloqueado pelo barbeiro.</div>`;
+    return;
+  }
+
+  const hours = getHoursForDate(dateStr);
+  if (!hours.length) {
+    document.getElementById('slots-grid').innerHTML=`<div style="color:var(--muted);font-size:13px;padding:10px 0">Sem horários disponíveis neste dia.</div>`;
+    return;
+  }
+
+  const taken=allAppts.filter(a=>a.date===dateStr&&a.barberId===state.barberId&&a.status!=='cancelado').map(a=>a.time);
+  document.getElementById('slots-grid').innerHTML=hours.map(h=>{
+    const isTaken=taken.includes(h),isSel=state.time===h;
+    let cls='slot';if(isTaken)cls+=' taken';else if(isSel)cls+=' selected';
+    const click=!isTaken?`onclick="selectSlot('${h}')"` :'';
+    return `<div class="${cls}" ${click}>${h}${isTaken?' 🔒':''}</div>`;
+  }).join('');
+}
+
+function selectSlot(time){
+  state.time=time;renderSlots(state.date);
+  document.getElementById('btn-next2').disabled=false;
+}
+
+// ─── RESUMO ───────────────────────────────────────────
+function renderSummary(){
+  const barber=BARBERS.find(b=>b.id===state.barberId);
+  const dt=new Date(state.date+'T00:00:00');
+  const service=document.getElementById('client-service').value;
+  document.getElementById('booking-summary').innerHTML=`
+    <div class="summary-item"><div class="summary-label">Barbeiro</div><div class="summary-value">${barber.name}</div></div>
+    <div class="summary-item"><div class="summary-label">Data</div><div class="summary-value">${DAYS[dt.getDay()]}, ${dt.getDate()} de ${MONTHS[dt.getMonth()]}</div></div>
+    <div class="summary-item"><div class="summary-label">Horário</div><div class="summary-value">${state.time}</div></div>
+    <div class="summary-item"><div class="summary-label">Serviço</div><div class="summary-value">${service.split('—')[0].trim()}</div></div>
+    <div class="summary-item"><div class="summary-label">Cliente</div><div class="summary-value">${document.getElementById('client-name').value}</div></div>`;
+}
+
+// ─── CONFIRMAR AGENDAMENTO ────────────────────────────
+async function confirmBooking(){
+  const conflict=allAppts.find(a=>a.date===state.date&&a.time===state.time&&a.barberId===state.barberId&&a.status!=='cancelado');
+  if(conflict){toast('⚠️ Este horário acabou de ser reservado! Escolha outro.');nextStep(2);return}
+
+  const btn=document.querySelector('#client-step4 .btn-gold');
+  btn.disabled=true;btn.textContent='Salvando...';
+
+  const service=document.getElementById('client-service').value;
+  const appt={
+    barberId:state.barberId,
+    barberName:BARBERS.find(b=>b.id===state.barberId).name,
+    date:state.date,time:state.time,
+    name:document.getElementById('client-name').value.trim(),
+    phone:document.getElementById('client-phone').value.trim(),
+    service:service.split('—')[0].trim(),
+    price:service.includes('—')?service.split('—')[1].trim():'',
+    obs:document.getElementById('client-obs').value.trim(),
+    status:'confirmado',
+    createdAt:fbFns.serverTimestamp(),
+  };
+
+  try {
+    await fbFns.addDoc(fbFns.collection(db,'agendamentos'),appt);
+    ['client-name','client-phone','client-service','client-obs'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('client-name').readOnly = false;
+    document.getElementById('client-phone').readOnly = false;
+    document.getElementById('client-name').style.opacity = '';
+    document.getElementById('client-phone').style.opacity = '';
+
+    // ── Abre WhatsApp com mensagem pronta ──────────────────────────────
+    const barberName = BARBERS.find(b=>b.id===state.barberId).name;
+    const dtFormatted = (() => {
+      const dt = new Date(appt.date+'T00:00:00');
+      return `${DAYS[dt.getDay()]}, ${dt.getDate()} de ${MONTHS[dt.getMonth()]} de ${dt.getFullYear()}`;
+    })();
+    const msg = encodeURIComponent(
+      `Olá! Gostaria de confirmar meu agendamento:\n\n` +
+      `👤 Nome: ${appt.name}\n` +
+      `✂️ Barbeiro: ${barberName}\n` +
+      `📅 Data: ${dtFormatted}\n` +
+      `🕐 Horário: ${appt.time}\n` +
+      `💈 Serviço: ${appt.service}${appt.price ? ' ('+appt.price+')' : ''}\n\n` +
+      `Agendamento realizado pelo app BarberBook. Até lá! 😊`
+    );
+    window.open(`https://wa.me/${WHATSAPP_BARBEARIA}?text=${msg}`, '_blank');
+    // ──────────────────────────────────────────────────────────────────
+
+    state.barberId=null;state.date=null;state.time=null;
+    nextStep(1);renderBarbers();
+    document.getElementById('btn-next1').disabled=true;
+    document.getElementById('btn-next2').disabled=true;
+    toast('🎉 Confirmado! WhatsApp aberto para avisar a barbearia.');
+  } catch(err){
+    console.error(err);toast('❌ Erro ao salvar.');
+  } finally{
+    btn.disabled=false;btn.textContent='✓ Confirmar Agendamento';
+  }
+}
+
+// ─── RELATÓRIO DE FATURAMENTO ─────────────────────────
+
+// Estado do relatório
+let reportPeriod = 'hoje';
+let reportFrom   = null; // string YYYY-MM-DD
+let reportTo     = null;
+
+// Extrai valor numérico do campo price (ex: "R$ 55" → 55)
+function parsePrice(priceStr) {
+  if (!priceStr) return 0;
+  const n = parseFloat(priceStr.replace(/[^\d,\.]/g,'').replace(',','.'));
+  return isNaN(n) ? 0 : n;
+}
+
+function setPeriod(period, btn) {
+  reportPeriod = period;
+  document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const picker = document.getElementById('custom-range-picker');
+  picker.style.display = period === 'personalizado' ? 'flex' : 'none';
+  if (period !== 'personalizado') renderReport();
+}
+
+function getReportRange() {
+  const t = new Date(today);
+  let from, to;
+
+  if (reportPeriod === 'hoje') {
+    from = to = formatDate(t);
+  } else if (reportPeriod === 'semana') {
+    const s = new Date(t); s.setDate(t.getDate() - t.getDay());
+    const e = new Date(s); e.setDate(s.getDate() + 6);
+    from = formatDate(s); to = formatDate(e);
+  } else if (reportPeriod === 'mes') {
+    from = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-01`;
+    const last = new Date(t.getFullYear(), t.getMonth()+1, 0);
+    to = formatDate(last);
+  } else if (reportPeriod === 'mes_passado') {
+    const y = t.getMonth()===0 ? t.getFullYear()-1 : t.getFullYear();
+    const m = t.getMonth()===0 ? 12 : t.getMonth();
+    from = `${y}-${String(m).padStart(2,'0')}-01`;
+    const last = new Date(y, m, 0);
+    to = formatDate(last);
+  } else {
+    from = document.getElementById('report-from').value || formatDate(t);
+    to   = document.getElementById('report-to').value   || formatDate(t);
+    if (to < from) to = from;
+  }
+  return { from, to };
+}
+
+function renderReport() {
+  const { from, to } = getReportRange();
+
+  // Filtra agendamentos do período (apenas confirmados)
+  const appts = allAppts.filter(a =>
+    a.status !== 'cancelado' && a.date >= from && a.date <= to
+  );
+
+  const total     = appts.reduce((s,a) => s + parsePrice(a.price), 0);
+  const count     = appts.length;
+  const cancelled = allAppts.filter(a => a.status==='cancelado' && a.date>=from && a.date<=to).length;
+  const avg       = count ? (total/count) : 0;
+
+  // KPIs
+  document.getElementById('report-kpis').innerHTML = `
+    <div class="kpi-card">
+      <div class="kpi-value">R$&nbsp;${total.toFixed(0)}</div>
+      <div class="kpi-label">Faturamento</div>
+      <div class="kpi-sub">${from===to ? 'no dia' : from+' → '+to}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value">${count}</div>
+      <div class="kpi-label">Atendimentos</div>
+      <div class="kpi-sub">confirmados</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value">R$&nbsp;${avg.toFixed(0)}</div>
+      <div class="kpi-label">Ticket Médio</div>
+      <div class="kpi-sub">por cliente</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value">${cancelled}</div>
+      <div class="kpi-label">Cancelamentos</div>
+      <div class="kpi-sub">no período</div>
+    </div>`;
+
+  // Gráfico de barras por dia
+  renderRevenueChart(appts, from, to);
+
+  // Breakdowns
+  renderBreakdowns(appts, total);
+}
+
+function renderRevenueChart(appts, from, to) {
+  // Monta array de dias entre from e to
+  const days = [];
+  const cur = new Date(from + 'T00:00:00');
+  const end = new Date(to   + 'T00:00:00');
+  while (cur <= end) { days.push(formatDate(cur)); cur.setDate(cur.getDate()+1); }
+
+  // Faturamento por dia
+  const byDay = {};
+  days.forEach(d => byDay[d] = 0);
+  appts.forEach(a => { if (byDay[a.date] !== undefined) byDay[a.date] += parsePrice(a.price); });
+
+  const values  = days.map(d => byDay[d]);
+  const maxVal  = Math.max(...values, 1);
+  const svg     = document.getElementById('revenue-chart');
+  const W       = Math.max(days.length * 44, 300);
+  const H       = 160;
+  const PAD     = { top:16, bottom:36, left:8, right:8 };
+  const barW    = Math.min(32, (W - PAD.left - PAD.right) / days.length - 6);
+  const chartH  = H - PAD.top - PAD.bottom;
+
+  svg.setAttribute('width', W);
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+  let html = '';
+
+  days.forEach((d, i) => {
+    const v   = byDay[d];
+    const bh  = v === 0 ? 2 : Math.max(4, (v / maxVal) * chartH);
+    const x   = PAD.left + i * (W - PAD.left - PAD.right) / days.length + ((W - PAD.left - PAD.right) / days.length - barW) / 2;
+    const y   = PAD.top + chartH - bh;
+    const dt  = new Date(d + 'T00:00:00');
+    const lbl = days.length <= 7
+      ? DAYS[dt.getDay()]
+      : days.length <= 31
+        ? dt.getDate()
+        : MONTHS[dt.getMonth()].slice(0,3);
+    const isToday = d === formatDate(today);
+    const fill = isToday ? '#e8c870' : '#c9a84c';
+
+    html += `
+      <rect x="${x}" y="${y}" width="${barW}" height="${bh}" rx="4" fill="${fill}" opacity="0.85"/>
+      <text x="${x + barW/2}" y="${H - PAD.bottom + 14}" text-anchor="middle"
+            font-size="10" fill="#666" font-family="DM Sans,sans-serif">${lbl}</text>`;
+
+    if (v > 0) {
+      html += `<text x="${x + barW/2}" y="${y - 5}" text-anchor="middle"
+            font-size="9" fill="#c9a84c" font-family="DM Sans,sans-serif" font-weight="600">R$${v.toFixed(0)}</text>`;
+    }
+  });
+
+  // Linha de base
+  html += `<line x1="${PAD.left}" y1="${PAD.top+chartH}" x2="${W-PAD.right}" y2="${PAD.top+chartH}" stroke="#2a2a2a" stroke-width="1"/>`;
+
+  svg.innerHTML = html;
+}
+
+function renderBreakdowns(appts, total) {
+  // Por serviço
+  const byService = {};
+  appts.forEach(a => {
+    byService[a.service] = (byService[a.service]||0) + parsePrice(a.price);
+  });
+  const services = Object.entries(byService).sort((a,b)=>b[1]-a[1]);
+  const maxSvc   = services[0]?.[1] || 1;
+
+  // Por barbeiro
+  const byBarber = {};
+  appts.forEach(a => {
+    const name = a.barberName || '?';
+    byBarber[name] = (byBarber[name]||0) + parsePrice(a.price);
+  });
+  const barbers = Object.entries(byBarber).sort((a,b)=>b[1]-a[1]);
+  const maxBar  = barbers[0]?.[1] || 1;
+
+  const mkRows = (entries, max) => entries.length
+    ? entries.map(([name, val]) => `
+        <div class="breakdown-row">
+          <div class="breakdown-name" title="${name}">${name}</div>
+          <div class="breakdown-bar-wrap"><div class="breakdown-bar" style="width:${(val/max*100).toFixed(1)}%"></div></div>
+          <div class="breakdown-val">R$&nbsp;${val.toFixed(0)}</div>
+        </div>`).join('')
+    : '<div style="font-size:13px;color:var(--muted);padding:12px 0">Sem dados no período</div>';
+
+  document.getElementById('report-breakdowns').innerHTML = `
+    <div class="breakdown-card">
+      <div class="breakdown-title">Por Serviço</div>
+      ${mkRows(services, maxSvc)}
+    </div>
+    <div class="breakdown-card">
+      <div class="breakdown-title">Por Barbeiro</div>
+      ${mkRows(barbers, maxBar)}
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════════
+//  GESTÃO DE AGENDA
+// ══════════════════════════════════════════════════════
+
+function switchAgendaTab(tab, btn) {
+  document.getElementById('agenda-dias').style.display   = tab==='dias'   ? 'block' : 'none';
+  document.getElementById('agenda-semana').style.display = tab==='semana' ? 'block' : 'none';
+  document.querySelectorAll('#agenda-dias,#agenda-semana').forEach(()=>{});
+  document.getElementById('agenda-tab-dias').classList.toggle('active',   tab==='dias');
+  document.getElementById('agenda-tab-semana').classList.toggle('active', tab==='semana');
+  if (tab==='semana') renderWeekHoursEditor();
+}
+
+// ── Mini calendário do admin ──────────────────────────
+function agendaChangeMonth(dir) {
+  agendaCalMonth += dir;
+  if (agendaCalMonth < 0)  { agendaCalMonth=11; agendaCalYear--; }
+  if (agendaCalMonth > 11) { agendaCalMonth=0;  agendaCalYear++; }
+  agendaSelectedDate = null;
+  document.getElementById('agenda-day-editor').style.display = 'none';
+  renderAgendaCal();
+}
+
+function renderAgendaCal() {
+  const monthEl = document.getElementById('agenda-cal-month');
+  if (!monthEl) return;
+  monthEl.textContent = `${MONTHS[agendaCalMonth]} ${agendaCalYear}`;
+
+  const grid  = document.getElementById('agenda-cal-grid');
+  grid.innerHTML = DAYS.map(d=>`<div class="agenda-cal-label">${d}</div>`).join('');
+
+  const first = new Date(agendaCalYear, agendaCalMonth, 1).getDay();
+  const days  = new Date(agendaCalYear, agendaCalMonth+1, 0).getDate();
+
+  for (let i=0; i<first; i++) grid.innerHTML += `<div class="agenda-day agenda-empty"></div>`;
+
+  for (let d=1; d<=days; d++) {
+    const dt      = new Date(agendaCalYear, agendaCalMonth, d);
+    const dateStr = formatDate(dt);
+    const isPast  = dt < today;
+    const isToday = dt.getTime() === today.getTime();
+    const isSel   = agendaSelectedDate === dateStr;
+    const isBlocked = blockedDates.has(dateStr);
+    const hasCustom = !!customHours[dateStr];
+
+    let cls = 'agenda-day';
+    if (isPast)     cls += ' agenda-past';
+    if (isToday)    cls += ' agenda-today';
+    if (isSel)      cls += ' agenda-selected';
+    if (isBlocked)  cls += ' agenda-blocked';
+    if (hasCustom && !isBlocked) cls += ' agenda-custom-hours';
+
+    const click = !isPast ? `onclick="agendaSelectDay('${dateStr}')"` : '';
+    grid.innerHTML += `<div class="${cls}" title="${dateStr}" ${click}>${d}</div>`;
+  }
+}
+
+function agendaSelectDay(dateStr) {
+  agendaSelectedDate = dateStr;
+  renderAgendaCal();
+  renderDayEditor(dateStr);
+}
+
+function renderDayEditor(dateStr) {
+  const editor = document.getElementById('agenda-day-editor');
+  editor.style.display = 'block';
+
+  const dt      = new Date(dateStr+'T00:00:00');
+  const label   = `${DAYS[dt.getDay()]}, ${dt.getDate()} de ${MONTHS[dt.getMonth()]} de ${dt.getFullYear()}`;
+  const blocked = blockedDates.has(dateStr);
+  const hours   = customHours[dateStr] || getHoursForDate(dateStr);
+
+  const statusBadge = blocked
+    ? `<span class="day-status-badge status-cancelled">🚫 Bloqueado</span>`
+    : `<span class="day-status-badge status-confirmed">✅ Disponível</span>`;
+
+  editor.innerHTML = `
+    <div class="day-editor">
+      <div class="day-editor-title">${label} &nbsp; ${statusBadge}</div>
+      <div class="day-editor-actions">
+        ${blocked
+          ? `<button class="btn btn-sm" style="background:rgba(76,175,136,0.15);color:var(--success);border:1px solid rgba(76,175,136,0.3)" onclick="toggleBlockDay('${dateStr}',false)">✅ Desbloquear dia</button>`
+          : `<button class="btn btn-danger btn-sm" onclick="toggleBlockDay('${dateStr}',true)">🚫 Bloquear dia inteiro</button>`
+        }
+        ${!blocked && customHours[dateStr]
+          ? `<button class="btn btn-outline btn-sm" onclick="clearCustomHours('${dateStr}')">↩ Restaurar padrão</button>`
+          : ''
+        }
+      </div>
+      ${!blocked ? `
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase">
+          Horários disponíveis — clique para ativar/desativar
+        </div>
+        <div class="hours-chip-grid" id="hours-chip-grid">
+          ${ALL_HOURS.map(h => `
+            <div class="hour-chip ${hours.includes(h)?'active':''}" onclick="toggleHourChip('${dateStr}','${h}',this)">
+              ${h}
+            </div>`).join('')}
+        </div>
+        <button class="btn btn-gold btn-sm" style="width:100%;margin-top:12px" onclick="saveCustomHours('${dateStr}')">
+          💾 Salvar horários deste dia
+        </button>
+      ` : '<div style="font-size:13px;color:var(--muted);margin-top:8px">Nenhum horário disponível — dia bloqueado.</div>'}
+    </div>`;
+}
+
+function toggleHourChip(dateStr, hour, el) {
+  el.classList.toggle('active');
+}
+
+async function toggleBlockDay(dateStr, block) {
+  try {
+    const newBlocked = new Set(blockedDates);
+    block ? newBlocked.add(dateStr) : newBlocked.delete(dateStr);
+
+    await saveAgendaConfig({ blockedDates: [...newBlocked] });
+    toast(block ? `🚫 ${dateStr} bloqueado!` : `✅ ${dateStr} desbloqueado!`);
+  } catch(e) { console.error(e); toast('❌ Erro ao salvar.'); }
+}
+
+async function saveCustomHours(dateStr) {
+  const chips = document.querySelectorAll('#hours-chip-grid .hour-chip.active');
+  const selectedHours = [...chips].map(c => c.textContent.trim()).sort();
+
+  const newCustom = { ...customHours, [dateStr]: selectedHours };
+  try {
+    await saveAgendaConfig({ customHours: newCustom });
+    toast(`✅ Horários do dia ${dateStr} salvos!`);
+  } catch(e) { console.error(e); toast('❌ Erro ao salvar.'); }
+}
+
+async function clearCustomHours(dateStr) {
+  const newCustom = { ...customHours };
+  delete newCustom[dateStr];
+  try {
+    await saveAgendaConfig({ customHours: newCustom });
+    toast('↩ Horários restaurados ao padrão.');
+    renderDayEditor(dateStr);
+  } catch(e) { console.error(e); toast('❌ Erro ao salvar.'); }
+}
+
+// ── Horários padrão por dia da semana ─────────────────
+function renderWeekHoursEditor() {
+  const grid = document.getElementById('week-hours-grid');
+  if (!grid) return;
+
+  grid.innerHTML = [1,2,3,4,5,6,0].map(dow => {
+    const hrs     = weekHours[dow];
+    const closed  = Array.isArray(hrs) && hrs.length === 0;
+    const defHrs  = WORK_HOURS;
+    const active  = Array.isArray(hrs) ? hrs : defHrs;
+    const start   = active[0]  || '08:00';
+    const end     = active[active.length-1] || '18:00';
+
+    return `
+    <div class="week-row">
+      <div class="week-day-label">${WEEK_NAMES[dow]}</div>
+      <input type="time" id="wh-start-${dow}" value="${start}" ${closed?'disabled':''} />
+      <span style="font-size:12px;color:var(--muted)">até</span>
+      <input type="time" id="wh-end-${dow}"   value="${end}"   ${closed?'disabled':''} />
+      <label class="week-closed-toggle">
+        <input type="checkbox" id="wh-closed-${dow}" ${closed?'checked':''} onchange="toggleWeekDayClosed(${dow})">
+        Fechado
+      </label>
+    </div>`;
+  }).join('');
+}
+
+function toggleWeekDayClosed(dow) {
+  const closed = document.getElementById(`wh-closed-${dow}`).checked;
+  document.getElementById(`wh-start-${dow}`).disabled = closed;
+  document.getElementById(`wh-end-${dow}`).disabled   = closed;
+}
+
+async function saveWeekHours() {
+  const newWeekHours = {};
+  for (const dow of [0,1,2,3,4,5,6]) {
+    const closed = document.getElementById(`wh-closed-${dow}`)?.checked;
+    if (closed) { newWeekHours[dow] = []; continue; }
+
+    const startVal = document.getElementById(`wh-start-${dow}`)?.value || '08:00';
+    const endVal   = document.getElementById(`wh-end-${dow}`)?.value   || '18:00';
+
+    // Gera lista de slots de 30 em 30 min entre start e end
+    const slots = [];
+    let [sh, sm] = startVal.split(':').map(Number);
+    const [eh, em] = endVal.split(':').map(Number);
+    const endMins = eh*60+em;
+    while (sh*60+sm <= endMins) {
+      slots.push(`${String(sh).padStart(2,'0')}:${String(sm).padStart(2,'0')}`);
+      sm += 30; if (sm>=60){sh++;sm-=60;}
+    }
+    newWeekHours[dow] = slots;
+  }
+
+  try {
+    await saveAgendaConfig({ weekHours: newWeekHours });
+    toast('✅ Horários semanais salvos!');
+  } catch(e) { console.error(e); toast('❌ Erro ao salvar.'); }
+}
+
+// ── Salva config no Firestore (merge) ─────────────────
+async function saveAgendaConfig(partial) {
+  const ref = fbFns.doc(db, 'config', 'agenda');
+  // setDoc com merge para não sobrescrever outros campos
+  await fbFns.setDoc(ref, partial, { merge: true });
+}
+
+// ─── ADMIN ────────────────────────────────────────────
+function adminLogin(){
+  if(document.getElementById('admin-pass').value===ADMIN_PASS){
+    showView('admin');document.getElementById('admin-pass').value='';
+    document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+    document.getElementById('tab-admin').classList.add('active');
+    renderAdmin();
+    // Mostra banner de notificação se ainda não foi autorizado
+    if (Notification.permission === 'default') {
+      setTimeout(() => document.getElementById('notif-banner-admin').classList.add('show'), 800);
+    }
+  } else toast('❌ Senha incorreta');
+}
+
+function adminLogout(){ navTo('client'); }
+
+function adminChangeBarberPassword(){
+  const barberId = document.getElementById('admin-barber-select').value;
+  const newPass = document.getElementById('admin-new-pass').value;
+  if(!barberId || !newPass) return toast('❌ Selecione o barbeiro e digite a nova senha');
+  const barber = BARBERS.find(b => b.id == barberId);
+  barber.password = newPass;
+  localStorage.setItem('barber_pass_' + barber.id, newPass);
+  document.getElementById('admin-barber-select').value = '';
+  document.getElementById('admin-new-pass').value = '';
+  toast('✅ Senha de ' + barber.name + ' alterada!');
+}
+
+async function barberLogin(){
+  const barberId = document.getElementById('barber-select').value;
+  const pass = document.getElementById('barber-pass').value;
+  if(!barberId || !pass) return toast('❌ Preencha todos os campos');
+  const barber = BARBERS.find(b => b.id == barberId);
+  if(!barber || barber.password !== pass) return toast('❌ Senha incorreta');
+  currentBarber = { id: barber.id, name: barber.name };
+  navTo('barber');
+  renderBarber();
+  toast('✅ Bem-vindo, ' + barber.name + '!');
+}
+
+function barberLogout(){ currentBarber = null; navTo('client'); }
+
+function renderBarber(){
+  document.getElementById('barber-name').textContent = currentBarber.name;
+  renderBarberAppts();
+
+  // Mostra banner de notificação se ainda não foi autorizado
+  if (Notification.permission === 'default') {
+    setTimeout(() => document.getElementById('notif-banner-barber').classList.add('show'), 800);
+  }
+}
+
+function filterBarberAppts(f,btn){
+  state.barberFilter = f;
+  document.querySelectorAll('#view-barber .filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderBarberAppts();
+}
+
+function renderBarberAppts(){
+  const search = (document.getElementById('barber-search')?.value || '').toLowerCase();
+  const todayStr = formatDate(today);
+  const weekStart = new Date(today);
+  weekStart.setDate(today.getDate() - today.getDay());
+  let appts = [...allAppts].filter(a => a.barberId == currentBarber.id);
+  if(state.barberFilter === 'hoje') appts = appts.filter(a => a.date === todayStr);
+  else if(state.barberFilter === 'semana') appts = appts.filter(a => new Date(a.date + 'T00:00:00') >= weekStart);
+  else if(state.barberFilter === 'confirmado') appts = appts.filter(a => a.status === 'confirmado');
+  else if(state.barberFilter === 'cancelado') appts = appts.filter(a => a.status === 'cancelado');
+  if(search) appts = appts.filter(a => a.name.toLowerCase().includes(search) || a.phone.includes(search));
+  appts.sort((a,b) => (a.date + a.time).localeCompare(b.date + b.time));
+
+  const list = document.getElementById('barber-appts-list');
+  if(!appts.length){ list.innerHTML = `<div class="empty-state"><div class="empty-icon">📅</div><div class="empty-text">Nenhum agendamento encontrado</div></div>`; return }
+
+  list.innerHTML = appts.map(a => {
+    const dt = new Date(a.date + 'T00:00:00');
+    const dateLabel = `${dt.getDate()}/${dt.getMonth()+1}`;
+    const statusCls = a.status === 'confirmado' ? 'status-confirmed' : a.status === 'cancelado' ? 'status-cancelled' : 'status-pending';
+    const statusLabel = a.status === 'confirmado' ? 'Confirmado' : a.status === 'cancelado' ? 'Cancelado' : 'Pendente';
+    return `
+    <div class="appt-card">
+      <div class="appt-time"><div class="appt-time-main">${a.time}</div><div class="appt-time-date">${dateLabel}</div></div>
+      <div class="appt-info">
+        <div class="appt-name">${a.name}</div>
+        <div class="appt-details">📱 ${a.phone}${a.obs ? ' &nbsp;·&nbsp; 💬 ' + a.obs : ''}</div>
+        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+          <span class="appt-service">${a.service}</span>
+          ${a.price ? `<span class="barber-tag" style="color:var(--gold)">${a.price}</span>` : ''}
+        </div>
+      </div>
+      <div class="appt-status">
+        <span class="status-badge ${statusCls}">${statusLabel}</span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${a.status !== 'cancelado'
+            ? `<button class="btn btn-danger btn-sm" onclick="updateStatus('${a.firestoreId}','cancelado')">✕ Cancelar</button>`
+            : `<button class="btn btn-sm" style="background:rgba(76,175,136,0.15);color:var(--success);border:1px solid rgba(76,175,136,0.3)" onclick="updateStatus('${a.firestoreId}','confirmado')">↩ Restaurar</button>`}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderAdmin(){ renderAdminStats(); renderReport(); renderAdminAppts(); renderAgendaCal(); renderWeekHoursEditor(); }
+
+function renderAdminStats(){
+  const todayStr=formatDate(today);
+  const weekStart=new Date(today);weekStart.setDate(today.getDate()-today.getDay());
+  document.getElementById('admin-stats').innerHTML=`
+    <div class="stat-card"><div class="stat-number">${allAppts.filter(a=>a.date===todayStr&&a.status!=='cancelado').length}</div><div class="stat-label">Hoje</div></div>
+    <div class="stat-card"><div class="stat-number">${allAppts.filter(a=>new Date(a.date+'T00:00:00')>=weekStart&&a.status!=='cancelado').length}</div><div class="stat-label">Esta semana</div></div>
+    <div class="stat-card"><div class="stat-number">${allAppts.filter(a=>a.status==='cancelado').length}</div><div class="stat-label">Cancelados</div></div>
+    <div class="stat-card"><div class="stat-number">${allAppts.filter(a=>a.status!=='cancelado').length}</div><div class="stat-label">Total</div></div>`;
+}
+
+function filterAppts(f,btn){
+  state.adminFilter=f;
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');renderAdminAppts();
+}
+
+function filterByBarber(id){
+  state.adminBarberFilter = id || null;
+  renderAdminAppts();
+}
+
+function renderAdminAppts(){
+  document.getElementById('admin-barber-filter').value = state.adminBarberFilter || '';
+  const search=(document.getElementById('admin-search')?.value||'').toLowerCase();
+  const todayStr=formatDate(today);
+  const weekStart=new Date(today);weekStart.setDate(today.getDate()-today.getDay());
+  let appts=[...allAppts];
+  if(state.adminFilter==='hoje')         appts=appts.filter(a=>a.date===todayStr);
+  else if(state.adminFilter==='semana')  appts=appts.filter(a=>new Date(a.date+'T00:00:00')>=weekStart);
+  else if(state.adminFilter==='confirmado') appts=appts.filter(a=>a.status==='confirmado');
+  else if(state.adminFilter==='cancelado')  appts=appts.filter(a=>a.status==='cancelado');
+  if(search) appts=appts.filter(a=>a.name.toLowerCase().includes(search)||a.phone.includes(search));
+  if(state.adminBarberFilter) appts=appts.filter(a=>a.barberId == state.adminBarberFilter);
+  appts.sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+
+  const list=document.getElementById('admin-appts-list');
+  if(!appts.length){list.innerHTML=`<div class="empty-state"><div class="empty-icon">📅</div><div class="empty-text">Nenhum agendamento encontrado</div></div>`;return}
+
+  list.innerHTML=appts.map(a=>{
+    const dt=new Date(a.date+'T00:00:00');
+    const dateLabel=`${dt.getDate()}/${dt.getMonth()+1}`;
+    const statusCls=a.status==='confirmado'?'status-confirmed':a.status==='cancelado'?'status-cancelled':'status-pending';
+    const statusLabel=a.status==='confirmado'?'Confirmado':a.status==='cancelado'?'Cancelado':'Pendente';
+    const barber=BARBERS.find(b=>b.id===a.barberId);
+    const fid=a.firestoreId;
+    return `
+    <div class="appt-card">
+      <div class="appt-time"><div class="appt-time-main">${a.time}</div><div class="appt-time-date">${dateLabel}</div></div>
+      <div class="appt-info">
+        <div class="appt-name">${a.name}</div>
+        <div class="appt-details">📱 ${a.phone}${a.obs?' &nbsp;·&nbsp; 💬 '+a.obs:''}</div>
+        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+          <span class="appt-service">${a.service}</span>
+          <span class="barber-tag">✂ ${barber?barber.name:'?'}</span>
+          ${a.price?`<span class="barber-tag" style="color:var(--gold)">${a.price}</span>`:''}
+        </div>
+      </div>
+      <div class="appt-status">
+        <span class="status-badge ${statusCls}">${statusLabel}</span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${a.status!=='cancelado'
+            ?`<button class="btn btn-danger btn-sm" onclick="updateStatus('${fid}','cancelado')">✕ Cancelar</button>`
+            :`<button class="btn btn-sm" style="background:rgba(76,175,136,0.15);color:var(--success);border:1px solid rgba(76,175,136,0.3)" onclick="updateStatus('${fid}','confirmado')">↩ Restaurar</button>`}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function updateStatus(fid,status){
+  try{
+    await fbFns.updateDoc(fbFns.doc(db,'agendamentos',fid),{status});
+    if (status === 'cancelado') cancelReminder(fid);
+    toast(status==='confirmado'?'✅ Restaurado!':'🗑️ Cancelado');
+  }catch(err){console.error(err);toast('❌ Erro ao atualizar.');}
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  SISTEMA DE NOTIFICAÇÕES — Service Worker + FCM
+// ══════════════════════════════════════════════════════════════════════
+
+let swRegistration = null;  // Service Worker registration
+let notifRole      = null;  // 'client' | 'admin'
+
+// ── 1. Registra o Service Worker ao carregar ──────────────────────────
+async function initServiceWorker() {
+  if (!('serviceWorker' in navigator) || !('Notification' in window)) return;
+
+  try {
+    swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    console.log('[SW] registrado:', swRegistration.scope);
+
+    if (Notification.permission === 'granted') {
+      hideBanners();
+      await subscribeAndSyncReminders();
+    } else if (Notification.permission === 'default') {
+      const dismissed = sessionStorage.getItem('notif-dismissed');
+      if (!dismissed) {
+        setTimeout(() => showNotifBanner(), 2000);
+      }
+    }
+  } catch(err) {
+    console.warn('[SW] falha ao registrar:', err);
+  }
+}
+
+// ── 2. Mostra banner na view correta ─────────────────────────────────
+function showNotifBanner() {
+  if (Notification.permission !== 'default') return; // já decidiu
+  // Mostra em TODAS as views de cliente (não admin)
+  document.getElementById('notif-banner-client').classList.add('show');
+  document.getElementById('notif-banner-minha-conta').classList.add('show');
+}
+
+function hideBanners() {
+  ['client','admin','minha-conta','barber'].forEach(r =>
+    document.getElementById('notif-banner-' + r)?.classList.remove('show')
+  );
+}
+
+function dismissNotifBanner(role) {
+  document.getElementById('notif-banner-' + role).classList.remove('show');
+  // Salva dismissal para não irritar o usuário
+  sessionStorage.setItem('notif-dismissed', '1');
+}
+
+// ── 3. Pede permissão e obtém token FCM ──────────────────────────────
+async function requestNotifPermission(role) {
+  notifRole = role;
+  hideBanners();
+
+  if (!('Notification' in window)) {
+    toast('⚠️ Seu navegador não suporta notificações.');
+    return;
+  }
+
+  const permission = await Notification.requestPermission();
+
+  if (permission === 'granted') {
+    toast('🔔 Notificações ativadas!');
+    await subscribeAndSyncReminders();
+  } else {
+    toast('⚠️ Permissão negada. Ative nas configurações do navegador.');
+  }
+}
+
+// ── 4. Obtém token FCM e sincroniza lembretes pendentes ───────────────
+async function subscribeAndSyncReminders() {
+  if (!fbFns?.messaging || !fbFns?.VAPID_KEY) return;
+
+  try {
+    const token = await fbFns.getToken(fbFns.messaging, {
+      vapidKey: fbFns.VAPID_KEY,
+      serviceWorkerRegistration: swRegistration
+    });
+
+    if (token) {
+      // Salva token no Firestore para uso futuro
+      const role = notifRole || (currentClient ? 'client' : 'admin');
+      const docId = role === 'admin' ? 'admin-token' : ('client-' + (currentClient?.phone || 'anon'));
+      await fbFns.updateDoc
+        ? fbFns.updateDoc(fbFns.doc(db, 'fcm_tokens', docId), { token, role, updatedAt: fbFns.serverTimestamp() }).catch(() =>
+            fbFns.addDoc(fbFns.collection(db, 'fcm_tokens'), { token, role, docId, updatedAt: fbFns.serverTimestamp() })
+          )
+        : null;
+
+      console.log('[FCM] token obtido:', token.substring(0,20)+'...');
+    }
+
+    // Recebe mensagens com app aberto
+    fbFns.onMessage(fbFns.messaging, payload => {
+      const { title, body } = payload.notification || {};
+      showLocalNotif(title || 'BarberBook', body || '');
+      toast('🔔 ' + (body || title || 'Novo lembrete!'));
+    });
+
+  } catch(err) {
+    console.warn('[FCM] erro ao obter token:', err);
+  }
+
+  // Agenda lembretes para todos os agendamentos futuros
+  scheduleAllReminders();
+}
+
+// ── 5. Mostra notificação local (app aberto) ──────────────────────────
+function showLocalNotif(title, body) {
+  if (Notification.permission !== 'granted') return;
+  try {
+    swRegistration?.showNotification(title, {
+      body,
+      icon:    '/icon-192.png',
+      tag:     'barberbook-' + Date.now(),
+      vibrate: [200, 100, 200],
+      requireInteraction: true,
+    });
+  } catch {
+    new Notification(title, { body });
+  }
+}
+
+// ── 6. Agenda lembretes via Service Worker ────────────────────────────
+function scheduleAllReminders() {
+  if (!swRegistration?.active || Notification.permission !== 'granted') return;
+
+  const now     = Date.now();
+  const FIFTEEN = 15 * 60 * 1000; // 15 minutos em ms
+  const isAdmin = document.getElementById('view-admin').classList.contains('active');
+
+  // Filtra agendamentos futuros confirmados
+  const upcoming = allAppts.filter(a => {
+    if (a.status === 'cancelado') return false;
+    const apptTime = new Date(a.date + 'T' + a.time + ':00').getTime();
+    const fireAt   = apptTime - FIFTEEN;
+    return fireAt > now; // só agenda se o disparo ainda não passou
+  });
+
+  upcoming.forEach(a => {
+    const apptTime = new Date(a.date + 'T' + a.time + ':00').getTime();
+    const fireAt   = apptTime - FIFTEEN;
+    const barber   = BARBERS.find(b => b.id === a.barberId);
+
+    // Notificação para o cliente (só se ele estiver logado e for o dono do agendamento)
+    const isMyAppt = currentClient &&
+      a.phone.replace(/\D/g,'') === currentClient.phone.replace(/\D/g,'');
+
+    if (!isAdmin && isMyAppt) {
+      swRegistration.active.postMessage({
+        type:   'SCHEDULE_REMINDER',
+        id:     'client-' + a.firestoreId,
+        fireAt,
+        title:  '✂️ Seu horário é em 15 minutos!',
+        body:   `${a.time} com ${barber?.name || 'barbeiro'} — ${a.service}`
+      });
+    }
+
+    // Notificação para o admin
+    if (isAdmin) {
+      swRegistration.active.postMessage({
+        type:   'SCHEDULE_REMINDER',
+        id:     'admin-' + a.firestoreId,
+        fireAt,
+        title:  '📅 Agendamento em 15 minutos',
+        body:   `${a.time} · ${a.name} · ${a.service} (${barber?.name || '?'})`
+      });
+    }
+  });
+
+  console.log(`[Notif] ${upcoming.length} lembretes agendados no SW`);
+}
+
+// ── 7. Cancela lembrete quando agendamento é cancelado ────────────────
+function cancelReminder(firestoreId) {
+  if (!swRegistration?.active) return;
+  swRegistration.active.postMessage({ type: 'CANCEL_REMINDER', id: 'client-' + firestoreId });
+  swRegistration.active.postMessage({ type: 'CANCEL_REMINDER', id: 'admin-'  + firestoreId });
+}
+
+// ── 8. Re-agenda lembretes sempre que os dados mudam ─────────────────
+// (chamado dentro do onSnapshot que já existe)
+
+// ─── TOAST ────────────────────────────────────────────
+function toast(msg){
+  const el=document.createElement('div');
+  el.className='toast';el.innerHTML=msg;
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(),3300);
+}
+
+// ── Inicia o SW quando o Firebase estiver pronto ──────────────────────
+window.addEventListener('firebase-ready', () => {
+  setTimeout(initServiceWorker, 500);
+}, { once: false });
+
+// ═══════════════════════════════════════════════════════════════════════
+//  PAGAMENTOS — Estrutura para integração com Mercado Pago
+// ═══════════════════════════════════════════════════════════════════════
+
+function switchAccountTab(tab, btn) {
+  document.querySelectorAll('#my-account-section .filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('account-agendamentos').style.display = tab === 'agendamentos' ? 'block' : 'none';
+  document.getElementById('account-pagamentos').style.display = tab === 'pagamentos' ? 'block' : 'none';
+}
+
+function selectPaymentMethod(method, btn) {
+  document.querySelectorAll('.payment-method-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('payment-cartao').style.display = method === 'cartao' ? 'block' : 'none';
+  document.getElementById('payment-pix').style.display = method === 'pix' ? 'block' : 'none';
+}
+
+function formatCardNumber(input) {
+  let value = input.value.replace(/\D/g, '');
+  value = value.replace(/(\d{4})(?=\d)/g, '$1 ');
+  input.value = value.trim();
+}
+
+function formatExpiry(input) {
+  let value = input.value.replace(/\D/g, '');
+  if (value.length >= 2) {
+    value = value.slice(0, 2) + '/' + value.slice(2, 4);
+  }
+  input.value = value;
+}
+
+function processPayment(method) {
+  // TODO: Integrar com Mercado Pago
+  // Por enquanto, apenas mostra mensagem
+  toast('🚀 Sistema de pagamentos em breve! Em desenvolvimento.');
+  
+  // Estrutura preparada para integração:
+  if (method === 'cartao') {
+    const cardData = {
+      number: document.getElementById('card-number').value.replace(/\s/g, ''),
+      expiry: document.getElementById('card-expiry').value,
+      cvv: document.getElementById('card-cvv').value,
+      name: document.getElementById('card-name').value
+    };
+    console.log('Dados do cartão:', cardData);
+    // Aqui vai a chamada para Mercado Pago Card Payment
+  } else if (method === 'pix') {
+    const pixKey = document.getElementById('pix-key').value;
+    console.log('Chave PIX:', pixKey);
+    // Aqui vai a chamada para Mercado Pago PIX Payment
+  }
+}
+</script>
+</body>
+</html>
