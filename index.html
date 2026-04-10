@@ -10,35 +10,7 @@
      🔥 FIREBASE — Substitua os valores abaixo pelas suas credenciais
      Firebase Console → Seu Projeto → Configurações → Seus apps → CDN
      ══════════════════════════════════════════════════════════════════ -->
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import {
-    getFirestore, collection, addDoc, onSnapshot,
-    doc, updateDoc, setDoc, deleteDoc, query, orderBy, serverTimestamp,
-    where, getDocs
-  } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-  import {
-    getMessaging, getToken, onMessage
-  } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
-
-  // ─── 🔑 SUAS CREDENCIAIS AQUI ────────────────────────────────────────
-const firebaseConfig = {
-cod firebase aqui
-};
-
-  // ✏️ VAPID KEY — Firebase Console → Cloud Messaging → Web Push certificates → Key pair
-  const VAPID_KEY = "key firebase aqui";
-  // ─────────────────────────────────────────────────────────────────────
-
-  const app       = initializeApp(firebaseConfig);
-  const db        = getFirestore(app);
-  const messaging = getMessaging(app);
-
-  window._fb = { db, collection, addDoc, onSnapshot, doc, updateDoc, setDoc,
-                 query, orderBy, serverTimestamp, where, getDocs,
-                 messaging, getToken, onMessage, VAPID_KEY };
-  window.dispatchEvent(new Event('firebase-ready'));
-</script>
+<!-- Firebase temporariamente removido para permitir visualização sem configuração -->
 
 <style>
 :root {
@@ -1145,49 +1117,54 @@ const ALL_HOURS = [
 const WEEK_NAMES = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
 
 // ─── FIREBASE INIT ────────────────────────────────────
-window.addEventListener('firebase-ready', () => {
-  const f = window._fb;
-  db = f.db; fbFns = f;
+function initializeAppWithoutFirebase() {
+  if (window._fb) {
+    const f = window._fb;
+    db = f.db; fbFns = f;
 
-  const q = f.query(f.collection(db,'agendamentos'), f.orderBy('date'), f.orderBy('time'));
-  f.onSnapshot(q, snap => {
-    allAppts = snap.docs.map(d => ({ firestoreId:d.id, ...d.data() }));
-    renderCalendar();
-    if (state.date) renderSlots(state.date);
-    if (document.getElementById('view-admin').classList.contains('active')) renderAdmin();
-    if (currentClient && document.getElementById('my-account-section').style.display!=='none') renderMyAppts();
-    setTimeout(scheduleAllReminders, 0);
-  }, err => {
-    console.error(err);
-    toast('❌ Erro ao conectar com o banco de dados.');
-  });
+    const q = f.query(f.collection(db,'agendamentos'), f.orderBy('date'), f.orderBy('time'));
+    f.onSnapshot(q, snap => {
+      allAppts = snap.docs.map(d => ({ firestoreId:d.id, ...d.data() }));
+      renderCalendar();
+      if (state.date) renderSlots(state.date);
+      if (document.getElementById('view-admin').classList.contains('active')) renderAdmin();
+      if (currentClient && document.getElementById('my-account-section').style.display!=='none') renderMyAppts();
+      setTimeout(scheduleAllReminders, 0);
+    }, err => {
+      console.error(err);
+      toast('❌ Erro ao conectar com o banco de dados.');
+    });
 
-  // ── Carrega configuração de agenda em tempo real ──
-  f.onSnapshot(f.doc(db, 'config', 'agenda'), snap => {
-    if (snap.exists()) {
-      const data = snap.data();
-      blockedDates = new Set(data.blockedDates || []);
-      customHours  = data.customHours  || {};
-      weekHours    = data.weekHours    || {};
-    } else {
-      blockedDates = new Set();
-      customHours  = {};
-      weekHours    = {};
-    }
-    renderCalendar();
-    if (state.date) renderSlots(state.date);
-    if (document.getElementById('view-admin').classList.contains('active')) {
-      renderAgendaCal();
-      renderWeekHoursEditor();
-    }
-  });
+    // ── Carrega configuração de agenda em tempo real ──
+    f.onSnapshot(f.doc(db, 'config', 'agenda'), snap => {
+      if (snap.exists()) {
+        const data = snap.data();
+        blockedDates = new Set(data.blockedDates || []);
+        customHours  = data.customHours  || {};
+        weekHours    = data.weekHours    || {};
+      } else {
+        blockedDates = new Set();
+        customHours  = {};
+        weekHours    = {};
+      }
+      renderCalendar();
+      if (state.date) renderSlots(state.date);
+      if (document.getElementById('view-admin').classList.contains('active')) {
+        renderAgendaCal();
+        renderWeekHoursEditor();
+      }
+    });
 
-  const saved = sessionStorage.getItem('bb_client');
-  if (saved) { try { currentClient = JSON.parse(saved); updateClientUI(); } catch{} }
+    const saved = sessionStorage.getItem('bb_client');
+    if (saved) { try { currentClient = JSON.parse(saved); updateClientUI(); } catch{} }
+  }
 
   renderBarbers();
   renderCalendar();
-});
+}
+
+window.addEventListener('firebase-ready', initializeAppWithoutFirebase);
+initializeAppWithoutFirebase();
 
 // ─── NAVEGAÇÃO ────────────────────────────────────────
 function navTo(name) {
